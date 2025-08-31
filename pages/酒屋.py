@@ -10,7 +10,7 @@ image_url = "https://raw.githubusercontent.com/paru-akindo/calc/main/image/sake.
 st.image(
     image_url,
     caption="銀塊のアイコン",
-    use_column_width=True
+    width=300
 )
 
 # ③ 計算入力
