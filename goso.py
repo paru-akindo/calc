@@ -15,7 +15,7 @@ def calculate_max_points(silver_count: int, gold_count: int, express_count: int)
     return max_silver_use, max_gold_use, total_points
 
 def main():
-    st.title("馬符使用ポイント最大化シミュレーター")
+    st.title("護送計算")
 
     # ユーザー入力
     silver = st.number_input("銀の馬符の数", min_value=0, step=1, value=0)
