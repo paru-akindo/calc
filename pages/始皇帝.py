@@ -15,7 +15,7 @@ def load_tables():
     df1 = pd.read_csv(
         csv_url,
         header=0,
-        nrows=31,
+        nrows=51,
         usecols=range(0, 10)
     )
 
@@ -24,7 +24,7 @@ def load_tables():
     df2 = pd.read_csv(
         csv_url,
         header=None,
-        skiprows=32,
+        skiprows=52,
         nrows=3,
         usecols=[1, 2]
     )
