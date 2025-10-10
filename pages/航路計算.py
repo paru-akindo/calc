@@ -4,9 +4,9 @@ from typing import Dict, List, Tuple
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="全港評価：上位5品目入力（表改善版）", layout="wide")
+st.set_page_config(page_title="効率よく買い物しよう！", layout="wide")
 
-PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
+PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏斉","ジョホール","大光国","天竺","セイロン","ペルシャ","大食国","ミスル","末羅国"]
 
 ITEMS = [
     ("鳳梨",100),("魚肉",100),("酒",100),("水稲",100),("木材",100),("ヤシ",100),
@@ -111,7 +111,7 @@ with col2:
 
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
-    if st.button("全港を評価"):
+    if st.button("検索"):
         # current_stock は上位5入力のみ反映、その他は0
         current_stock = {name: 0 for name, _ in ITEMS}
         for name in stock_inputs:
