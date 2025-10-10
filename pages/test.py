@@ -1,4 +1,4 @@
-# main.py（簡潔版）
+# main.py
 import streamlit as st
 import requests
 import json
@@ -65,19 +65,14 @@ def normalize_items(raw_items) -> List[Tuple[str,int]]:
     return out
 
 def port_has_actual_prices(port_prices: dict, items: List[Tuple[str,int]]) -> bool:
-    # 必須: 全アイテムのキーが存在し数値であること
     for name, _ in items:
-        if name not in port_prices:
+        if name not in port_prices or not isinstance(port_prices[name], (int, float)):
             return False
-        if not isinstance(port_prices[name], (int, float)):
-            return False
-    # 実値入力判定: 少なくとも1つ base と異なること（tol=0）
     for name, base in items:
         if int(round(port_prices.get(name))) != int(base):
             return True
     return False
 
-# 空欄可・厳格整数入力 (空欄 -> None)
 def numeric_input_optional_strict(label: str, key: str, placeholder: str = "", allow_commas: bool = True, min_value: int = None):
     invalid_flag = f"{key}_invalid"
     if invalid_flag not in st.session_state:
@@ -145,11 +140,10 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     return plan, total_cost, total_profit
 
 # --------------------
-# アプリ本体（シンプル版）
+# アプリ本体（簡潔版＋表示切替）
 # --------------------
-st.title("効率よく買い物しよう！ / 管理（簡潔版）")
+st.title("効率よく買い物しよう！ / 管理（テーブル表示付き）")
 
-# 1) JSON を取得（なければ組み込み ITEMS/PORTS を使用）
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
     st.warning("jsonbin から読み込みできませんでした。組み込み定義を使用します。")
@@ -157,9 +151,8 @@ if cfg is None:
 
 PORTS_CFG = cfg.get("PORTS", PORTS)
 ITEMS_CFG = normalize_items(cfg.get("ITEMS", [list(i) for i in ITEMS]))
-PRICES_CFG = cfg.get("PRICES", {})  # {port: {item: price, ...}, ...}
+PRICES_CFG = cfg.get("PRICES", {})
 
-# 2) 全港が実値入力済みか判定（tol=0 固定）
 all_populated = True
 missing_ports = []
 for port in PORTS_CFG:
@@ -168,39 +161,38 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-# 3) 全部入力済みならシミュレーション画面
+# UI: 表示切替チェックボックス（メイン表示領域で表示）
+show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
+show_percent_table = st.checkbox("補正%表を表示（基礎値=100換算での ±%）", value=False)
+
 if all_populated:
     st.success("すべての港に実価格が入力されています。シミュレーション画面を表示します。")
     price_matrix = build_price_matrix_from_prices(PRICES_CFG, items=ITEMS_CFG, ports=PORTS_CFG)
 
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.header("効率よく買い物しよう！（実価格ベース）")
+    # メインレイアウト: 左=操作、中=テーブル表示（切替）
+    col_left, col_main = st.columns([1, 2])
 
+    with col_left:
+        st.header("シミュレーション")
         current_port = st.selectbox("現在港", PORTS_CFG, index=0)
         cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
 
-        # 割安判定: 他港平均より安い差を使う（上位5）
-        item_diffs = []
+        # 在庫入力対象の選定: 価格 / 基礎値 小さい順、同値は価格小さい順
+        item_scores = []
         for item_name, base in ITEMS_CFG:
-            prices_for_item = [price_matrix[item_name][p] for p in PORTS_CFG]
-            avg_price = sum(prices_for_item) / len(prices_for_item) if prices_for_item else base
             this_price = price_matrix[item_name][current_port]
-            diff = avg_price - this_price
-            item_diffs.append((item_name, diff))
-        item_diffs.sort(key=lambda x: x[1], reverse=True)
-        top5 = [name for name, diff in item_diffs if diff > 0][:5]
+            ratio = this_price / float(base) if base != 0 else float('inf')
+            item_scores.append((item_name, ratio, this_price))
+        item_scores.sort(key=lambda t: (t[1], t[2]))
+        top5 = [name for name, _, _ in item_scores][:5]
 
-        st.write("現在港で割安な上位5品目（この5つのみ在庫入力）。")
+        st.write("在庫入力（上位5）: 価格 / 基礎値 が小さい順、同率は価格が安い順")
         stock_inputs = {}
-        if top5:
-            cols = st.columns(2)
-            for i, name in enumerate(top5):
-                c = cols[i % 2]
-                with c:
-                    stock_inputs[name] = numeric_input_optional_strict(f"{name} 在庫数", key=f"stk_{name}", placeholder="例: 10", allow_commas=True, min_value=0)
-        else:
-            st.info("割安品はありません。全品目入力が必要なら管理画面で指定してください。")
+        cols = st.columns(2)
+        for i, name in enumerate(top5):
+            c = cols[i % 2]
+            with c:
+                stock_inputs[name] = numeric_input_optional_strict(f"{name} 在庫数", key=f"stk_{name}", placeholder="例: 10", allow_commas=True, min_value=0)
 
         top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
@@ -208,7 +200,6 @@ if all_populated:
             if cash is None:
                 st.error("所持金を入力してください（空欄不可）。")
             else:
-                # 入力エラーチェック
                 invalid_found = False
                 for name in stock_inputs.keys():
                     if st.session_state.get(f"stk_{name}_invalid", False):
@@ -252,19 +243,34 @@ if all_populated:
                             num_format = {"購入単価":"{:,.0f}", "売価":"{:,.0f}", "単位差益":"{:,.0f}", "購入数":"{:,.0f}", "想定利益":"{:,.0f}"}
                             styled = df_disp.style.format(num_format, na_rep="")
                             st.dataframe(styled, height=200)
-                            st.write("---")
 
-    with st.sidebar:
-        if st.checkbox("価格表を表示（実価格）"):
+    with col_main:
+        st.header("テーブル表示")
+        if show_price_table:
             rows = []
             for item, _ in ITEMS_CFG:
                 row = {"品目": item}
                 for p in PORTS_CFG:
-                    row[p] = PRICES_CFG.get(p, {}).get(item, None)
+                    row[p] = price_matrix[item][p]
                 rows.append(row)
-            st.dataframe(pd.DataFrame(rows).set_index("品目"), height=600)
+            df_price = pd.DataFrame(rows).set_index("品目")
+            st.subheader("実価格表")
+            st.dataframe(df_price, height=400)
 
-# 4) 未入力港があれば管理画面へ誘導
+        if show_percent_table:
+            rows = []
+            for item, base in ITEMS_CFG:
+                row = {"品目": item}
+                for p in PORTS_CFG:
+                    price = price_matrix[item][p]
+                    pct = int(round((price - base) / float(base) * 100)) if base != 0 else None
+                    # 表示は符号つき（例: -7, +10）
+                    row[p] = f"{pct:+d}%" if pct is not None else None
+                rows.append(row)
+            df_pct = pd.DataFrame(rows).set_index("品目")
+            st.subheader("基礎値100換算 補正%表")
+            st.dataframe(df_pct, height=400)
+
 else:
     st.warning("一部の港が未更新です。管理画面で入力してください。")
     st.write("未更新港:", missing_ports)
