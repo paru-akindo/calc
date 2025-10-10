@@ -142,7 +142,6 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
 # 追加ユーティリティ: ベースに戻す・ポート一覧取得
 # --------------------
 def reset_port_to_base(port: str, items_cfg: List[Tuple[str,int]], prices_cfg: Dict[str, Dict[str,int]]):
-    # 指定ポートの価格を ITEMS の base 値に戻す
     new_row = {}
     for name, base in items_cfg:
         new_row[name] = int(base)
@@ -188,10 +187,13 @@ for port in PORTS_CFG:
 show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
 show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False)
 
-# 管理モードを共通に（シミュレーション側からも開ける）
+# 管理モードのセッション初期化
 if "mode" not in st.session_state:
     st.session_state["mode"] = "view"
 
+# --------------------
+# 左側: シミュレーション領域
+# --------------------
 if all_populated:
     st.success("すべての港に実価格が入力されています。シミュレーション画面を表示します。")
     price_matrix = build_price_matrix_from_prices(PRICES_CFG, items=ITEMS_CFG, ports=PORTS_CFG)
@@ -352,10 +354,14 @@ if all_populated:
             st.dataframe(styled_corr, height=380)
 
 else:
+    # 未更新がある場合の案内（管理へ誘導）
     st.warning("一部の港が未更新です。管理画面で入力してください。")
     st.write("未更新港:", missing_ports)
+    if st.button("管理画面を開く（未更新港を編集）"):
+        st.session_state["mode"] = "admin"
+        safe_rerun()
 
-# ---------- 管理モード（共通） ----------
+# ---------- 管理モード（常に別ブロックで表示可能） ----------
 if st.session_state.get("mode") == "admin":
     st.header("管理画面")
 
@@ -366,7 +372,6 @@ if st.session_state.get("mode") == "admin":
     tab_all, tab_pop, tab_missing = st.tabs(["すべての港", "入力済みの港を編集", "未更新港を編集"])
     with tab_all:
         st.subheader("全ポート一覧（編集可）")
-        # 選択肢に全港を入れる（編集対象の選択）
         sel_port_all = st.selectbox("編集する港を選択", options=PORTS_CFG, key="sel_port_all")
         st.markdown(f"### {sel_port_all} の価格を編集 / リセット")
         current_row = PRICES_CFG.get(sel_port_all, {})
