@@ -457,8 +457,8 @@ if st.session_state.get("mode") == "admin":
             st.info("未更新の港はありません。")
 
     with tab_all:
-        st.subheader("全ポート一覧（編集／参照）")
-        sel_port_all = st.selectbox("編集する港を選択（全ポート）", options=PORTS_CFG, key="sel_port_all_admin")
+        st.subheader("全港一覧")
+        sel_port_all = st.selectbox("編集する港を選択", options=PORTS_CFG, key="sel_port_all_admin")
         st.markdown(f"## {sel_port_all} の価格（編集可）")
         current_row = PRICES_CFG.get(sel_port_all, {})
         cols2 = st.columns(2)
@@ -517,7 +517,7 @@ if st.session_state.get("mode") == "admin":
 
         # ---------- 全ポート最下部: 全件リセット（パスワード保護） ----------
         st.markdown("---")
-        st.write("全ポートを base 値にリセットします。実行すると現在の全データが上書きされます。")
+        st.write("全港のデータを base 値にリセットします。実行すると現在の全データが上書きされます。")
         pwd = st.text_input("操作パスワードを入力してください", type="password", key="reset_all_pwd")
         if st.button("全港を base 値にリセット（パスワード必須）", key="reset_all_confirm"):
             if pwd == RESET_PASSWORD:
