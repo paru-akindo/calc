@@ -31,7 +31,7 @@ JSONBIN_BASE = f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN_ID}"
 JSONBIN_HEADERS = {"Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY}
 
 # --------------------
-# ヘルパー
+# ヘルパー関数
 # --------------------
 def safe_rerun():
     try:
@@ -88,7 +88,6 @@ def numeric_input_optional_strict(label: str, key: str, placeholder: str = "", a
     if allow_commas:
         s = s.replace(",", "")
     s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
-
     if not re.fullmatch(r"\d+", s):
         st.error(f"「{label}」は整数の半角数字のみで入力してください。入力値: {raw}")
         st.session_state[invalid_flag] = True
@@ -140,10 +139,11 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     return plan, total_cost, total_profit
 
 # --------------------
-# アプリ本体（簡潔版＋表示切替）
+# アプリ本体（最初の合成版を簡潔に整理）
 # --------------------
-st.title("効率よく買い物しよう！ / 管理（テーブル表示付き）")
+st.title("効率よく買い物しよう！ / 管理（色付きテーブル）")
 
+# 1) JSON を取得（未取得なら組み込み定義）
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
     st.warning("jsonbin から読み込みできませんでした。組み込み定義を使用します。")
@@ -153,6 +153,7 @@ PORTS_CFG = cfg.get("PORTS", PORTS)
 ITEMS_CFG = normalize_items(cfg.get("ITEMS", [list(i) for i in ITEMS]))
 PRICES_CFG = cfg.get("PRICES", {})
 
+# 2) 全港入力確認（完全一致基準）
 all_populated = True
 missing_ports = []
 for port in PORTS_CFG:
@@ -161,15 +162,14 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-# UI: 表示切替チェックボックス（メイン表示領域で表示）
+# UI: 表示切替チェックボックス（メイン表示領域）
 show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
-show_percent_table = st.checkbox("補正%表を表示（基礎値=100換算での ±%）", value=False)
+show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False)
 
 if all_populated:
     st.success("すべての港に実価格が入力されています。シミュレーション画面を表示します。")
     price_matrix = build_price_matrix_from_prices(PRICES_CFG, items=ITEMS_CFG, ports=PORTS_CFG)
 
-    # メインレイアウト: 左=操作、中=テーブル表示（切替）
     col_left, col_main = st.columns([1, 2])
 
     with col_left:
@@ -177,7 +177,7 @@ if all_populated:
         current_port = st.selectbox("現在港", PORTS_CFG, index=0)
         cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
 
-        # 在庫入力対象の選定: 価格 / 基礎値 小さい順、同値は価格小さい順
+        # 在庫入力対象の選定: 価格 / 基礎値 小さい順、同率は価格小さい順
         item_scores = []
         for item_name, base in ITEMS_CFG:
             this_price = price_matrix[item_name][current_port]
@@ -242,34 +242,103 @@ if all_populated:
                             df_disp = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
                             num_format = {"購入単価":"{:,.0f}", "売価":"{:,.0f}", "単位差益":"{:,.0f}", "購入数":"{:,.0f}", "想定利益":"{:,.0f}"}
                             styled = df_disp.style.format(num_format, na_rep="")
-                            st.dataframe(styled, height=200)
+                            st.dataframe(styled, height=240)
 
+    # テーブル表示（色付きグラデーション）
     with col_main:
         st.header("テーブル表示")
+
+        # 実価格表
         if show_price_table:
             rows = []
-            for item, _ in ITEMS_CFG:
+            for item, base in ITEMS_CFG:
                 row = {"品目": item}
                 for p in PORTS_CFG:
                     row[p] = price_matrix[item][p]
                 rows.append(row)
             df_price = pd.DataFrame(rows).set_index("品目")
-            st.subheader("実価格表")
-            st.dataframe(df_price, height=400)
 
-        if show_percent_table:
+            def price_cell_css(price_val, base):
+                try:
+                    price_int = int(price_val)
+                except Exception:
+                    return ""
+                pct = (price_int - base) / float(base) * 100 if base != 0 else 0.0
+                if pct > 20:
+                    pct = 20
+                if pct < -20:
+                    pct = -20
+                if pct >= 0:
+                    t = pct / 20.0
+                    r = int(255 * (0.9 * t + 0.1))
+                    g = int(255 * (1 - 0.8 * t))
+                    b = int(255 * (1 - 0.9 * t))
+                else:
+                    t = (-pct) / 20.0
+                    r = int(255 * (1 - 0.9 * t))
+                    g = int(255 * (0.9 * t + 0.1))
+                    b = int(255 * (1 - 0.9 * t))
+                text_color = "#000" if (r + g + b) > 380 else "#fff"
+                return f"background-color: rgb({r},{g},{b}); color: {text_color}"
+
+            def price_styler(df):
+                sty = pd.DataFrame("", index=df.index, columns=df.columns)
+                base_map = dict(ITEMS_CFG)
+                for item in df.index:
+                    base = base_map[item]
+                    for col in df.columns:
+                        sty.at[item, col] = price_cell_css(df.at[item, col], base)
+                return sty
+
+            st.subheader("実価格表")
+            styled_price = df_price.style.apply(lambda _: price_styler(df_price), axis=None)
+            st.dataframe(styled_price, height=380)
+
+        # 補正表（基礎値差を数値表示、%なし）
+        if show_correction_table:
             rows = []
             for item, base in ITEMS_CFG:
                 row = {"品目": item}
                 for p in PORTS_CFG:
                     price = price_matrix[item][p]
-                    pct = int(round((price - base) / float(base) * 100)) if base != 0 else None
-                    # 表示は符号つき（例: -7, +10）
-                    row[p] = f"{pct:+d}%" if pct is not None else None
+                    pct = int(round((price - base) / float(base) * 100)) if base != 0 else 0
+                    row[p] = pct  # 表示は数値（例 -7, 10）
                 rows.append(row)
-            df_pct = pd.DataFrame(rows).set_index("品目")
-            st.subheader("基礎値100換算 補正%表")
-            st.dataframe(df_pct, height=400)
+            df_corr = pd.DataFrame(rows).set_index("品目")
+
+            def corr_cell_css(pct_val):
+                try:
+                    v = int(pct_val)
+                except Exception:
+                    return ""
+                if v > 20:
+                    v = 20
+                if v < -20:
+                    v = -20
+                if v >= 0:
+                    t = v / 20.0
+                    r = int(255 * (0.9 * t + 0.1))
+                    g = int(255 * (1 - 0.8 * t))
+                    b = int(255 * (1 - 0.9 * t))
+                else:
+                    t = (-v) / 20.0
+                    r = int(255 * (1 - 0.9 * t))
+                    g = int(255 * (0.9 * t + 0.1))
+                    b = int(255 * (1 - 0.9 * t))
+                text_color = "#000" if (r + g + b) > 380 else "#fff"
+                return f"background-color: rgb({r},{g},{b}); color: {text_color}"
+
+            def corr_styler(df):
+                sty = pd.DataFrame("", index=df.index, columns=df.columns)
+                for item in df.index:
+                    for col in df.columns:
+                        sty.at[item, col] = corr_cell_css(df.at[item, col])
+                return sty
+
+            st.subheader("基礎値100換算 補正（数値表示）")
+            styled_corr = df_corr.style.apply(lambda _: corr_styler(df_corr), axis=None)
+            styled_corr = styled_corr.format("{:+d}", na_rep="")
+            st.dataframe(styled_corr, height=380)
 
 else:
     st.warning("一部の港が未更新です。管理画面で入力してください。")
@@ -305,7 +374,7 @@ else:
                 for name, base in ITEMS_CFG:
                     raw = inputs.get(name, "")
                     s = (raw or "").strip().replace(",", "")
-                    s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,")) 
+                    s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
                     if s == "" or not re.fullmatch(r"\d+", s):
                         invalids.append(name)
                     else:
