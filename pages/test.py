@@ -31,6 +31,11 @@ JSONBIN_BASE = f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN_ID}"
 JSONBIN_HEADERS = {"Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY}
 
 # --------------------
+# 全件リセットのパスワード（ソース直書き）
+# --------------------
+RESET_PASSWORD = "venus"  # <-- 必要に応じて書き換えてください
+
+# --------------------
 # ヘルパー関数
 # --------------------
 def safe_rerun():
@@ -451,21 +456,6 @@ if st.session_state.get("mode") == "admin":
         else:
             st.info("未更新の港はありません。")
 
-        st.markdown("---")
-        if st.button("全港を base 値にリセット（注意: 上書きされます）", key="reset_all_global"):
-            PRICES_CFG = reset_all_ports_to_base(ITEMS_CFG, PRICES_CFG, PORTS_CFG)
-            cfg["PRICES"] = PRICES_CFG
-            try:
-                resp = save_cfg_to_jsonbin(cfg)
-                st.success(f"全港を base にリセットしました。HTTP {resp.status_code}")
-                new_cfg = fetch_cfg_from_jsonbin()
-                if new_cfg:
-                    cfg = new_cfg
-                    PRICES_CFG = cfg.get("PRICES", {})
-                    safe_rerun()
-            except Exception as e:
-                st.error(f"全件リセットに失敗しました: {e}")
-
     with tab_all:
         st.subheader("全ポート一覧（編集／参照）")
         sel_port_all = st.selectbox("編集する港を選択（全ポート）", options=PORTS_CFG, key="sel_port_all_admin")
@@ -524,6 +514,27 @@ if st.session_state.get("mode") == "admin":
                     safe_rerun()
                 else:
                     st.error("再取得に失敗しました。")
+
+        # ---------- 全ポート最下部: 全件リセット（パスワード保護） ----------
+        st.markdown("---")
+        st.write("全ポートを base 値にリセットします。実行すると現在の全データが上書きされます。")
+        pwd = st.text_input("操作パスワードを入力してください", type="password", key="reset_all_pwd")
+        if st.button("全港を base 値にリセット（パスワード必須）", key="reset_all_confirm"):
+            if pwd == RESET_PASSWORD:
+                PRICES_CFG = reset_all_ports_to_base(ITEMS_CFG, PRICES_CFG, PORTS_CFG)
+                cfg["PRICES"] = PRICES_CFG
+                try:
+                    resp = save_cfg_to_jsonbin(cfg)
+                    st.success(f"全港を base にリセットしました。HTTP {resp.status_code}")
+                    new_cfg = fetch_cfg_from_jsonbin()
+                    if new_cfg:
+                        cfg = new_cfg
+                        PRICES_CFG = cfg.get("PRICES", {})
+                        safe_rerun()
+                except Exception as e:
+                    st.error(f"全件リセットに失敗しました: {e}")
+            else:
+                st.error("パスワードが違います。操作は中止されました。")
 
     st.markdown("---")
     if st.button("管理モードを終了して戻る", key="btn_close_admin"):
