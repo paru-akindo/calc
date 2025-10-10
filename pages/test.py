@@ -1,6 +1,7 @@
 # main.py
 import streamlit as st
 from typing import Dict, List, Tuple
+import pandas as pd
 
 st.set_page_config(page_title="全港評価（上位5品目入力）", layout="wide")
 
@@ -86,14 +87,14 @@ with col2:
     current_port = st.selectbox("現在港", PORTS, index=0)
     cash = st.number_input("所持金", min_value=0, value=5000, step=100)
 
-    # 現在港で補正%がマイナスの品目を抽出し、小さい（大きなマイナス）順に上位5を選ぶ
+    # 現在港で補正%がマイナスの上位5品目を抽出
     port_idx = PORTS.index(current_port)
     item_pcts = []
     for i, (item_name, _) in enumerate(ITEMS):
         pct = MODIFIERS_PERCENT[i][port_idx]
         item_pcts.append((item_name, pct))
     negative_items = [t for t in item_pcts if t[1] < 0]
-    negative_items.sort(key=lambda x: x[1])  # -30, -20, -5 ...
+    negative_items.sort(key=lambda x: x[1])
     top5_negative = negative_items[:5]
 
     st.write("現在港で割安（補正%がマイナス）な上位5品目（この5つのみ在庫入力）")
@@ -110,7 +111,6 @@ with col2:
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
     if st.button("全港を評価"):
-        # current_stock は上位5で入力されたもののみ、他は0扱い
         current_stock = {name: 0 for name, _ in ITEMS}
         for name in stock_inputs:
             current_stock[name] = stock_inputs[name]
@@ -132,19 +132,45 @@ with col2:
                 if not plan:
                     st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
                     continue
-                st.write("品目 | 購入数 | 購入単価 | 売値 | 単位差益 | 想定利益")
-                for item, qty, buy, sell, unit_profit in plan:
-                    st.write(f"{item} | {qty} | {buy} | {sell} | {unit_profit} | {qty * unit_profit}")
+
+                # DataFrame 作成（表形式で見やすく）
+                df = pd.DataFrame([{
+                    "品目": item,
+                    "購入数": qty,
+                    "購入単価": buy,
+                    "売価": sell,
+                    "単位差益": unit_profit,
+                    "想定利益": qty * unit_profit
+                } for item, qty, buy, sell, unit_profit in plan])
+
+                # 合計行を追加
+                totals = pd.DataFrame([{
+                    "品目": "合計",
+                    "購入数": df["購入数"].sum(),
+                    "購入単価": "",
+                    "売価": "",
+                    "単位差益": "",
+                    "想定利益": df["想定利益"].sum()
+                }])
+                df_disp = pd.concat([df, totals], ignore_index=True)
+
+                # 表示（幅調整して見やすく）
+                st.dataframe(df_disp.style.format({
+                    "購入単価": "{:,.0f}",
+                    "売価": "{:,.0f}",
+                    "単位差益": "{:,.0f}",
+                    "購入数": "{:,.0f}",
+                    "想定利益": "{:,.0f}"
+                }), height=200)
                 st.write("---")
 
 with col3:
     if st.checkbox("価格表を表示"):
-        import pandas as pd
         rows = []
         for item, _ in ITEMS:
             row = {"品目": item}
             for p in PORTS:
                 row[p] = price_matrix[item][p]
             rows.append(row)
-        df = pd.DataFrame(rows)
-        st.dataframe(df.set_index("品目"), height=600)
+        df_all = pd.DataFrame(rows).set_index("品目")
+        st.dataframe(df_all, height=600)
