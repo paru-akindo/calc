@@ -226,15 +226,23 @@ with col_left:
         ratio = this_price / float(base) if base != 0 else float('inf')
         item_scores.append((item_name, ratio, this_price))
     item_scores.sort(key=lambda t: (t[1], t[2]))
-    top5 = [name for name, _, _ in item_scores][:5]
+    # 上位5
+    top5 = item_scores[:5]
 
     st.write("在庫入力（上位5）: 価格 / 基礎値 が小さい順、同率は価格が安い順")
     stock_inputs = {}
     cols = st.columns(2)
-    for i, name in enumerate(top5):
+    for i, (name, ratio, price_val, base_val) in enumerate(top5):
+        pct = int(round((price_val - base_val) / float(base_val) * 100)) if base_val != 0 else 0
+        sign_pct = f"{pct:+d}%"  # 例: -13% or +05%
+        label = f"{name}({sign_pct}) 在庫数"
+        # ツールチップで詳細を示す（hover的に表示されるが、Streamlitは title で助長表示）
+        help_text = f"価格: {price_val} / 基礎: {base_val}"
         c = cols[i % 2]
         with c:
-            stock_inputs[name] = numeric_input_optional_strict(f"{name} 在庫数", key=f"stk_{name}_sim", placeholder="例: 10", allow_commas=True, min_value=0)
+            stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}_sim", placeholder="例: 10", allow_commas=True, min_value=0)
+            # 補助表示（小さめ）
+            st.caption(help_text)
 
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3, key="slider_topk")
 
