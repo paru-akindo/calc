@@ -148,9 +148,9 @@ def reset_port_to_base(port: str, items_cfg: List[Tuple[str,int]], prices_cfg: D
     prices_cfg[port] = new_row
     return prices_cfg
 
-def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tuple[str,int]]):
+def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tuple[str,int]], ports: List[str]):
     populated = []
-    for port in PORTS:
+    for port in ports:
         row = prices_cfg.get(port, {})
         ok = True
         for name, _ in items_cfg:
@@ -366,7 +366,7 @@ if st.session_state.get("mode") == "admin":
     st.header("管理画面")
 
     # 管理メニュー: 未更新 / 既更新 をタブで分ける
-    populated_ports = get_populated_ports(PRICES_CFG, ITEMS_CFG)
+    populated_ports = get_populated_ports(PRICES_CFG, ITEMS_CFG, PORTS_CFG)
     not_populated_ports = [p for p in PORTS_CFG if p not in populated_ports]
 
     tab_all, tab_pop, tab_missing = st.tabs(["すべての港", "入力済みの港を編集", "未更新港を編集"])
@@ -595,6 +595,8 @@ if st.session_state.get("mode") == "admin":
                         safe_rerun()
                     else:
                         st.error("再取得に失敗しました。")
+        else:
+            st.info("未更新の港はありません。全ポートの一覧や入力済み港の編集タブをご利用ください。")
 
     # 管理モード終了ボタン
     if st.button("管理モードを終了して戻る"):
