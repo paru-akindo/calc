@@ -3,6 +3,7 @@ import streamlit as st
 from typing import Dict, List, Tuple
 import pandas as pd
 import numpy as np
+import re
 
 st.set_page_config(page_title="効率よく買い物しよう！", layout="wide")
 
@@ -39,6 +40,80 @@ MODIFIERS_PERCENT = [
     [-9,-18,0,-6,2,0,-5,3,14,-3,-8,-6,-7,-5,7,3,-5,2,-6,-9]
 ]
 
+# ---------------------------
+# ユーティリティ: 空欄許容・厳格整数チェック入力欄
+# ---------------------------
+def numeric_input_optional_strict(label: str, key: str, placeholder: str = "", allow_commas: bool = True, min_value: int = None, max_value: int = None):
+    """
+    - 初期は空欄。
+    - 空欄 -> returns None.
+    - 整数のみ許可。全角数字とカンマを許容して内部で半角に変換。
+    - 数字以外が入力された場合は st.error を出し、st.session_state[f"{key}_invalid"]=True を立てる。
+    - 正常値の場合は st.session_state[f"{key}_invalid"]=False を設定して int を返す。
+    """
+    # reset invalid flag default
+    invalid_flag = f"{key}_invalid"
+    if invalid_flag not in st.session_state:
+        st.session_state[invalid_flag] = False
+
+    raw = st.text_input(label, value="", placeholder=placeholder, key=key)
+
+    # try to set numeric keyboard hint (browser dependent)
+    js = f"""
+    <script>
+    try {{
+      const labels = Array.from(document.querySelectorAll('label'));
+      const el = labels.find(l => l.innerText && l.innerText.trim().startsWith("{label.replace('"','\\"')}"));
+      if (el) {{
+        const input = el.parentElement.querySelector('input');
+        if (input) {{
+          input.setAttribute('inputmode','numeric');
+          input.setAttribute('pattern','[0-9,]*');
+        }}
+      }}
+    }} catch(e){{}}
+    </script>
+    """
+    st.markdown(js, unsafe_allow_html=True)
+
+    s = raw.strip()
+    if s == "":
+        st.session_state[invalid_flag] = False
+        return None
+
+    # normalize: remove commas if allowed, convert full-width digits
+    if allow_commas:
+        s = s.replace(",", "")
+    s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
+
+    # strict integer check: only digits (no sign)
+    if not re.fullmatch(r"\d+", s):
+        st.error(f"「{label}」は整数の半角数字のみで入力してください。入力値: {raw}")
+        st.session_state[invalid_flag] = True
+        return None
+
+    try:
+        val = int(s)
+    except Exception:
+        st.error(f"「{label}」の数値変換でエラーが発生しました。入力: {raw}")
+        st.session_state[invalid_flag] = True
+        return None
+
+    if min_value is not None and val < min_value:
+        st.error(f"「{label}」は {min_value} 以上で入力してください。")
+        st.session_state[invalid_flag] = True
+        return None
+    if max_value is not None and val > max_value:
+        st.error(f"「{label}」は {max_value} 以下で入力してください。")
+        st.session_state[invalid_flag] = True
+        return None
+
+    st.session_state[invalid_flag] = False
+    return val
+
+# ---------------------------
+# 既存ロジック（価格と最適化）
+# ---------------------------
 def build_price_matrix_percent():
     price = {}
     for idx, (name, base) in enumerate(ITEMS):
@@ -79,14 +154,18 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     total_profit = sum(q * up for _, q, _, _, up in plan)
     return plan, total_cost, total_profit
 
+# ---------------------------
 # UI --- 中央寄せ
+# ---------------------------
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.title("効率よく買い物しよう！")
     price_matrix = build_price_matrix_percent()
 
     current_port = st.selectbox("現在港", PORTS, index=0)
-    cash = st.number_input("所持金", min_value=0, value=5000, step=100)
+
+    # 所持金: 初期空欄を許容する入力欄（厳格）
+    cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
 
     # 現在港で補正%がマイナスの上位5品目を抽出
     port_idx = PORTS.index(current_port)
@@ -98,79 +177,91 @@ with col2:
     negative_items.sort(key=lambda x: x[1])
     top5_negative = negative_items[:5]
 
-    st.write("現在港で割安（補正%がマイナス）な上位5品目（この5つのみ在庫入力）")
+    st.write("現在港で割安（補正%がマイナス）な上位5品目（この5つのみ在庫入力）。")
     stock_inputs = {}
     if top5_negative:
         cols = st.columns(2)
         for i, (item_name, pct) in enumerate(top5_negative):
             c = cols[i % 2]
             with c:
-                stock_inputs[item_name] = st.number_input(f"{item_name} 在庫数", min_value=0, value=0, key=f"stk_{item_name}")
+                # 各在庫入力欄も空欄可で厳格チェック
+                stock_inputs[item_name] = numeric_input_optional_strict(f"{item_name} 在庫数", key=f"stk_{item_name}", placeholder="例: 10", allow_commas=True, min_value=0)
     else:
         st.info("該当港で補正%がマイナスの品目はありません。全品目を入力したい場合は指示してください。")
 
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
     if st.button("検索"):
-        # current_stock は上位5入力のみ反映、その他は0
-        current_stock = {name: 0 for name, _ in ITEMS}
-        for name in stock_inputs:
-            current_stock[name] = stock_inputs[name]
-
-        results = []
-        for dest in PORTS:
-            if dest == current_port:
-                continue
-            plan, cost, profit = greedy_plan_for_destination(current_port, dest, cash, current_stock, price_matrix)
-            results.append((dest, plan, cost, profit))
-        results.sort(key=lambda x: x[3], reverse=True)
-        top_results = results[:top_k]
-
-        if not top_results or all(r[3] <= 0 for r in top_results):
-            st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
+        # バリデーション: 所持金は必須（未入力ならエラー）
+        if cash is None:
+            st.error("所持金を入力してください（空欄不可）。")
         else:
-            for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
-                st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
-                if not plan:
-                    st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
-                    continue
+            # 在庫の不正入力フラグをチェック
+            invalid_found = False
+            for i, (item_name, _) in enumerate(top5_negative):
+                flag = st.session_state.get(f"stk_{item_name}_invalid", False)
+                if flag:
+                    st.error(f"{item_name} の入力が不正です。半角の整数で入力してください。")
+                    invalid_found = True
+            if invalid_found:
+                st.error("不正な在庫入力があるため検索を中止します。")
+            else:
+                # current_stock は上位5入力のみ反映、空欄(None)は0扱い
+                current_stock = {name: 0 for name, _ in ITEMS}
+                for name in stock_inputs:
+                    val = stock_inputs.get(name)
+                    current_stock[name] = int(val) if val is not None else 0
 
-                # DataFrame 作成（表形式で見やすく）
-                df = pd.DataFrame([{
-                    "品目": item,
-                    "購入数": qty,
-                    "購入単価": buy,
-                    "売価": sell,
-                    "単位差益": unit_profit,
-                    "想定利益": qty * unit_profit
-                } for item, qty, buy, sell, unit_profit in plan])
+                results = []
+                for dest in PORTS:
+                    if dest == current_port:
+                        continue
+                    plan, cost, profit = greedy_plan_for_destination(current_port, dest, cash, current_stock, price_matrix)
+                    results.append((dest, plan, cost, profit))
+                results.sort(key=lambda x: x[3], reverse=True)
+                top_results = results[:top_k]
 
-                # 合計行は数値列は数値で保持、非数値は NaN にする
-                totals = {
-                    "品目": "合計",
-                    "購入数": int(df["購入数"].sum()) if not df.empty else 0,
-                    "購入単価": np.nan,
-                    "売価": np.nan,
-                    "単位差益": np.nan,
-                    "想定利益": int(df["想定利益"].sum()) if not df.empty else 0
-                }
-                df_disp = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+                if not top_results or all(r[3] <= 0 for r in top_results):
+                    st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
+                else:
+                    for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
+                        st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
+                        if not plan:
+                            st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
+                            continue
 
-                # 数値列のみフォーマットを指定
-                num_format = {
-                    "購入単価": "{:,.0f}",
-                    "売価": "{:,.0f}",
-                    "単位差益": "{:,.0f}",
-                    "購入数": "{:,.0f}",
-                    "想定利益": "{:,.0f}"
-                }
+                        # DataFrame 作成（表形式で見やすく）
+                        df = pd.DataFrame([{
+                            "品目": item,
+                            "購入数": qty,
+                            "購入単価": buy,
+                            "売価": sell,
+                            "単位差益": unit_profit,
+                            "想定利益": qty * unit_profit
+                        } for item, qty, buy, sell, unit_profit in plan])
 
-                # Styler を作成し、NaN は表示上空文字にする
-                styled = df_disp.style.format(num_format, na_rep="")
+                        # 合計行は数値列は数値で保持、非数値は NaN にする
+                        totals = {
+                            "品目": "合計",
+                            "購入数": int(df["購入数"].sum()) if not df.empty else 0,
+                            "購入単価": np.nan,
+                            "売価": np.nan,
+                            "単位差益": np.nan,
+                            "想定利益": int(df["想定利益"].sum()) if not df.empty else 0
+                        }
+                        df_disp = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
 
-                # DataFrame 表示（高さを調整）
-                st.dataframe(styled, height=200)
-                st.write("---")
+                        # Styler 表示（NaN を空文字に）
+                        num_format = {
+                            "購入単価": "{:,.0f}",
+                            "売価": "{:,.0f}",
+                            "単位差益": "{:,.0f}",
+                            "購入数": "{:,.0f}",
+                            "想定利益": "{:,.0f}"
+                        }
+                        styled = df_disp.style.format(num_format, na_rep="")
+                        st.dataframe(styled, height=200)
+                        st.write("---")
 
 with col3:
     if st.checkbox("価格表を表示"):
