@@ -366,8 +366,8 @@ if st.session_state.get("mode") == "admin":
     st.header("管理画面")
 
     # 管理メニュー: 未更新 / 既更新 をタブで分ける
-    populated_ports = get_populated_ports(PRICES_CFG, ITEMS_CFG, PORTS_CFG)
-    not_populated_ports = [p for p in PORTS_CFG if p not in populated_ports]
+    populated_ports = [p for p in PORTS_CFG if p not in missing_ports]
+    not_populated_ports = missing_ports
 
     tab_all, tab_pop, tab_missing = st.tabs(["すべての港", "入力済みの港を編集", "未更新港を編集"])
     with tab_all:
