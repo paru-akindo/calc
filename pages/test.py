@@ -169,7 +169,7 @@ def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tu
 # --------------------
 # アプリ本体
 # --------------------
-st.title("効率よく買い物しよう！ / 管理（在庫ラベル表示付き）")
+st.title("効率よく買い物しよう！")
 
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
@@ -189,8 +189,8 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-show_price_table = st.checkbox("価格表を表示（実価格）", value=False, key="chk_price_table")
-show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False, key="chk_corr_table")
+show_price_table = st.checkbox("価格表を表示", value=False, key="chk_price_table")
+show_correction_table = st.checkbox("割引率を表示", value=False, key="chk_corr_table")
 
 # 管理モードのセッション初期化
 if "mode" not in st.session_state:
@@ -229,7 +229,7 @@ with col_left:
     item_scores.sort(key=lambda t: (t[1], t[2]))
     top5 = item_scores[:5]
 
-    st.write("在庫入力（上位5）: 価格 / 基礎値 が小さい順、同率は価格が安い順")
+    st.write("在庫入力（上位5）")
     stock_inputs = {}
     cols = st.columns(2)
     for i, (name, ratio, price_val, base_val) in enumerate(top5):
@@ -328,7 +328,7 @@ with col_main:
                     sty.at[item, col] = price_cell_css_simple(df.at[item, col], base)
             return sty
 
-        st.subheader("実価格表")
+        st.subheader("実価格")
         styled_price = df_price.style.apply(lambda _: price_styler_simple(df_price), axis=None)
         st.dataframe(styled_price, height=380)
 
@@ -362,7 +362,7 @@ with col_main:
                     sty.at[item, col] = corr_cell_css_simple(df.at[item, col])
             return sty
 
-        st.subheader("基礎値100換算 補正（数値表示）")
+        st.subheader("割引率")
         styled_corr = df_corr.style.apply(lambda _: corr_styler_simple(df_corr), axis=None)
         styled_corr = styled_corr.format("{:+d}", na_rep="")
         st.dataframe(styled_corr, height=380)
