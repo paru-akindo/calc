@@ -1,11 +1,8 @@
-# trade_suggester.py
-import streamlit as st
-import pandas as pd
+# recommend_next_step_percent.py
+# Python 3.8+
 from typing import Dict, List, Tuple
+import math
 
-st.set_page_config(page_title="Trade Suggester", layout="wide")
-
-# --- Data: ports, items, base prices, modifiers (from user provided table) ---
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
 ITEMS = [
@@ -16,7 +13,8 @@ ITEMS = [
     ("象牙",1000),("鹿茸",1000)
 ]
 
-MODIFIERS = [
+# 補正値は % として解釈する（例 -7 は -7%）
+MODIFIERS_PERCENT = [
     [-7,3,3,-8,0,-8,-1,-1,-6,-13,-3,8,6,19,5,-2,-2,5,9,3],
     [9,7,-8,0,-1,6,10,-6,-2,-7,-9,-5,-13,8,-1,4,-4,-4,20,0],
     [6,5,10,8,-2,0,8,-1,-4,-8,7,-14,-2,-3,-8,20,7,-6,6,4],
@@ -39,103 +37,86 @@ MODIFIERS = [
     [-9,-18,0,-6,2,0,-5,3,14,-3,-8,-6,-7,-5,7,3,-5,2,-6,-9]
 ]
 
-def build_price_matrix():
+def build_price_matrix_percent() -> Dict[str, Dict[str, int]]:
+    """
+    各港の価格 = 元値 * (1 + 補正% / 100)
+    結果は四捨五入して整数にする
+    """
     price = {}
     for idx, (name, base) in enumerate(ITEMS):
         row = {}
-        mods = MODIFIERS[idx]
+        mods = MODIFIERS_PERCENT[idx]
         for p_idx, port in enumerate(PORTS):
-            row[port] = base + mods[p_idx]
+            pct = mods[p_idx]
+            val = base * (1 + pct / 100.0)
+            row[port] = int(round(val))
         price[name] = row
     return price
 
-price_matrix = build_price_matrix()
-
-# --- Sidebar inputs ---
-st.title("Trade Suggester (Streamlit)")
-
-st.sidebar.header("入力")
-current_port = st.sidebar.selectbox("現在の港", PORTS, index=0)
-cash = st.sidebar.number_input("現在の資産 (整数)", min_value=0, value=5000, step=1000)
-
-# Compute "cheapness" at current port: modifier (元値差分) sorted ascending (more negative => cheaper)
-# For display, build dataframe of items with modifier and local buy price
-mod_list = []
-for idx, (item, base) in enumerate(ITEMS):
-    mod = MODIFIERS[idx][PORTS.index(current_port)]
-    buy_price = price_matrix[item][current_port]
-    mod_list.append({"品目": item, "元値": base, "修正値": mod, "買値": buy_price})
-
-df_mod = pd.DataFrame(mod_list).sort_values(by="修正値")  # ascending: more negative first
-
-st.sidebar.markdown("### マイナスが大きい（買うと得）上位5")
-top5 = df_mod.head(5).reset_index(drop=True)
-# For each top5 show item and input field for available stock at current port
-stock_inputs = {}
-for i, row in top5.iterrows():
-    item = row["品目"]
-    st.sidebar.write(f"{i+1}. {item}  (買値: {row['買値']} , 修正値: {row['修正値']})")
-    stock_inputs[item] = st.sidebar.number_input(f"{item} の在庫（現在港）", min_value=0, value=0, step=1, key=f"stock_{i}")
-
-st.sidebar.markdown("---")
-st.sidebar.write("必要なら他商品在庫を追加で入力してください（任意）")
-# optional free-form additional stocks
-more_items = st.sidebar.multiselect("追加商品を選ぶ（任意）", [it[0] for it in ITEMS if it[0] not in top5["品目"].tolist()])
-for it in more_items:
-    stock_inputs[it] = st.sidebar.number_input(f"{it} の在庫（現在港）", min_value=0, value=0, step=1, key=f"stock_extra_{it}")
-
-# Button to run analysis
-if st.sidebar.button("解析する"):
-    # Build candidate trades: for each item with stock>0, consider all destination ports != current_port
-    candidates = []
-    for item, base in ITEMS:
-        stock_here = stock_inputs.get(item, 0)
-        if stock_here <= 0:
+def recommend_next_steps_percent(
+    current_port: str,
+    cash: int,
+    current_stock: Dict[str,int],
+    price_matrix: Dict[str,Dict[str,int]],
+    top_n_ports: int = 6,
+    score_mode: str = "unit"  # "unit" or "total"
+) -> List[Tuple[str,str,int,int,int]]:
+    """
+    戻り値: [(到着港, 推奨品目, 単位差益, 購入上限数量, 想定総利益), ...]
+    score_mode == "unit" : 単位差益でソート
+    score_mode == "total": 購入上限 * 単位差益 でソート
+    """
+    results = []
+    for dest in PORTS:
+        if dest == current_port:
             continue
-        buy_price = price_matrix[item][current_port]
-        # For each dest, compute unit profit
-        for dest in PORTS:
-            if dest == current_port:
+        best_item = None
+        best_unit_profit = -10**9
+        best_qty = 0
+        for item, _base in ITEMS:
+            stock_here = current_stock.get(item, 0)
+            if stock_here <= 0:
                 continue
+            buy_price = price_matrix[item][current_port]
             sell_price = price_matrix[item][dest]
             unit_profit = sell_price - buy_price
             if unit_profit <= 0:
                 continue
-            # maximum affordable quantity given cash
             max_by_cash = cash // buy_price if buy_price > 0 else stock_here
             qty = min(stock_here, max_by_cash)
             if qty <= 0:
                 continue
-            total_profit = unit_profit * qty
-            candidates.append({
-                "品目": item,
-                "到着港": dest,
-                "買値": buy_price,
-                "売値": sell_price,
-                "単位差益": unit_profit,
-                "購入上限(在庫)": stock_here,
-                "購入上限(資金)": max_by_cash,
-                "推奨購入数": qty,
-                "期待総利益": total_profit
-            })
-    if len(candidates) == 0:
-        st.warning("購入可能な候補が見つかりません。在庫入力と資金を確認してください。")
+            # 評価基準は単位差益優先。必要なら total に切替。
+            if unit_profit > best_unit_profit:
+                best_unit_profit = unit_profit
+                best_item = item
+                best_qty = qty
+        if best_item is not None:
+            total_profit = best_unit_profit * best_qty
+            results.append((dest, best_item, best_unit_profit, best_qty, total_profit))
+    if score_mode == "unit":
+        results.sort(key=lambda x: x[2], reverse=True)
     else:
-        cand_df = pd.DataFrame(candidates)
-        cand_df = cand_df.sort_values(by="期待総利益", ascending=False).reset_index(drop=True)
-        st.subheader("推奨トップ候補（期待総利益順）")
-        # Show top 3
-        top_k = cand_df.head(3)
-        for i, r in top_k.iterrows():
-            st.markdown(f"### #{i+1} : {r['品目']} → {r['到着港']}")
-            st.write(f"- 単位差益: {r['単位差益']}")
-            st.write(f"- 買値: {r['買値']} / 売値: {r['売値']}")
-            st.write(f"- 推奨購入数: {int(r['推奨購入数'])}")
-            st.write(f"- 期待総利益: {int(r['期待総利益'])}")
-            st.divider()
-        st.subheader("全候補（上位20）")
-        st.dataframe(cand_df.head(20).astype({"買値":"int","売値":"int","単位差益":"int","購入上限(在庫)":"int","購入上限(資金)":"int","推奨購入数":"int","期待総利益":"int"}), use_container_width=True)
+        results.sort(key=lambda x: x[4], reverse=True)
+    return results[:top_n_ports]
 
-# Footer instructions
-st.sidebar.markdown("---")
-st.sidebar.write("注: 現在は簡易モデルです。拡張機能（在庫補充、価格日次更新、複数港予約、移動時間アイテムなど）は今後追加できます。")
+def print_recommendations(recs: List[Tuple[str,str,int,int,int]]):
+    print("到着港 | 推奨品目 | 単位差益 | 購入上限 | 想定総利益")
+    for dest, item, unit, qty, total in recs:
+        print(f"{dest} | {item} | {unit} | {qty} | {total}")
+
+if __name__ == "__main__":
+    price = build_price_matrix_percent()
+    # サンプル入力
+    current_port = "博多"
+    cash = 5000
+    current_stock = {
+        "鳳梨": 50, "魚肉": 20, "酒": 10, "水稲": 0, "木材": 5, "ヤシ": 0,
+        "海鮮": 0, "絹糸": 0, "水晶": 3, "茶葉": 0, "鉄鉱": 0,
+        "香料": 1, "玉器": 0, "白銀": 0, "皮革": 0,
+        "真珠": 0, "燕の巣": 0, "陶器": 0,
+        "象牙": 0, "鹿茸": 0
+    }
+    recs = recommend_next_steps_percent(current_port, cash, current_stock, price, top_n_ports=8, score_mode="total")
+    print(f"現在港: {current_port} 所持金: {cash}")
+    print_recommendations(recs)
