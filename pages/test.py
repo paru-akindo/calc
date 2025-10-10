@@ -2,8 +2,9 @@
 import streamlit as st
 from typing import Dict, List, Tuple
 import pandas as pd
+import numpy as np
 
-st.set_page_config(page_title="全港評価（上位5品目入力）", layout="wide")
+st.set_page_config(page_title="全港評価：上位5品目入力（表改善版）", layout="wide")
 
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
@@ -111,6 +112,7 @@ with col2:
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
     if st.button("全港を評価"):
+        # current_stock は上位5入力のみ反映、その他は0
         current_stock = {name: 0 for name, _ in ITEMS}
         for name in stock_inputs:
             current_stock[name] = stock_inputs[name]
@@ -143,25 +145,31 @@ with col2:
                     "想定利益": qty * unit_profit
                 } for item, qty, buy, sell, unit_profit in plan])
 
-                # 合計行を追加
-                totals = pd.DataFrame([{
+                # 合計行は数値列は数値で保持、非数値は NaN にする
+                totals = {
                     "品目": "合計",
-                    "購入数": df["購入数"].sum(),
-                    "購入単価": "",
-                    "売価": "",
-                    "単位差益": "",
-                    "想定利益": df["想定利益"].sum()
-                }])
-                df_disp = pd.concat([df, totals], ignore_index=True)
+                    "購入数": int(df["購入数"].sum()) if not df.empty else 0,
+                    "購入単価": np.nan,
+                    "売価": np.nan,
+                    "単位差益": np.nan,
+                    "想定利益": int(df["想定利益"].sum()) if not df.empty else 0
+                }
+                df_disp = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
 
-                # 表示（幅調整して見やすく）
-                st.dataframe(df_disp.style.format({
+                # 数値列のみフォーマットを指定
+                num_format = {
                     "購入単価": "{:,.0f}",
                     "売価": "{:,.0f}",
                     "単位差益": "{:,.0f}",
                     "購入数": "{:,.0f}",
                     "想定利益": "{:,.0f}"
-                }), height=200)
+                }
+
+                # Styler を作成し、NaN は表示上空文字にする
+                styled = df_disp.style.format(num_format, na_rep="")
+
+                # DataFrame 表示（高さを調整）
+                st.dataframe(styled, height=200)
                 st.write("---")
 
 with col3:
