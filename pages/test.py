@@ -139,6 +139,30 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     return plan, total_cost, total_profit
 
 # --------------------
+# 追加ユーティリティ: ベースに戻す・ポート一覧取得
+# --------------------
+def reset_port_to_base(port: str, items_cfg: List[Tuple[str,int]], prices_cfg: Dict[str, Dict[str,int]]):
+    # 指定ポートの価格を ITEMS の base 値に戻す
+    new_row = {}
+    for name, base in items_cfg:
+        new_row[name] = int(base)
+    prices_cfg[port] = new_row
+    return prices_cfg
+
+def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tuple[str,int]]):
+    populated = []
+    for port in PORTS:
+        row = prices_cfg.get(port, {})
+        ok = True
+        for name, _ in items_cfg:
+            if name not in row or not isinstance(row[name], (int, float)):
+                ok = False
+                break
+        if ok:
+            populated.append(port)
+    return populated
+
+# --------------------
 # アプリ本体
 # --------------------
 st.title("効率よく買い物しよう！ / 管理（色指定版）")
@@ -164,6 +188,10 @@ for port in PORTS_CFG:
 show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
 show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False)
 
+# 管理モードを共通に（シミュレーション側からも開ける）
+if "mode" not in st.session_state:
+    st.session_state["mode"] = "view"
+
 if all_populated:
     st.success("すべての港に実価格が入力されています。シミュレーション画面を表示します。")
     price_matrix = build_price_matrix_from_prices(PRICES_CFG, items=ITEMS_CFG, ports=PORTS_CFG)
@@ -174,6 +202,11 @@ if all_populated:
         st.header("シミュレーション")
         current_port = st.selectbox("現在港", PORTS_CFG, index=0)
         cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
+
+        # 管理画面へ飛ぶボタン（シミュレーション側にも配置）
+        if st.button("管理画面を開く"):
+            st.session_state["mode"] = "admin"
+            safe_rerun()
 
         # 在庫入力対象の選定: 価格 / 基礎値 小さい順、同率は価格小さい順
         item_scores = []
@@ -263,10 +296,8 @@ if all_populated:
                     return ""
                 diff = price_int - base
                 if diff < 0:
-                    # マイナスはピンク（薄め）
                     return "background-color: #ffc0cb; color: #000"
                 elif diff > 0:
-                    # プラスは黄緑（薄め）
                     return "background-color: #c6f6b6; color: #000"
                 else:
                     return ""
@@ -324,35 +355,36 @@ else:
     st.warning("一部の港が未更新です。管理画面で入力してください。")
     st.write("未更新港:", missing_ports)
 
-    if "mode" not in st.session_state:
-        st.session_state["mode"] = "view"
-    if st.button("管理画面を開く（未更新港を編集）"):
-        st.session_state["mode"] = "admin"
-        safe_rerun()
+# ---------- 管理モード（共通） ----------
+if st.session_state.get("mode") == "admin":
+    st.header("管理画面")
 
-    if st.session_state.get("mode") == "admin":
-        st.header("管理画面: 未更新港の編集")
-        selected_port = st.selectbox("編集する未更新の港を選択", options=missing_ports)
-        st.markdown(f"## {selected_port} の価格を入力（整数のみ）")
-        current = PRICES_CFG.get(selected_port, {})
+    # 管理メニュー: 未更新 / 既更新 をタブで分ける
+    populated_ports = get_populated_ports(PRICES_CFG, ITEMS_CFG)
+    not_populated_ports = [p for p in PORTS_CFG if p not in populated_ports]
 
+    tab_all, tab_pop, tab_missing = st.tabs(["すべての港", "入力済みの港を編集", "未更新港を編集"])
+    with tab_all:
+        st.subheader("全ポート一覧（編集可）")
+        # 選択肢に全港を入れる（編集対象の選択）
+        sel_port_all = st.selectbox("編集する港を選択", options=PORTS_CFG, key="sel_port_all")
+        st.markdown(f"### {sel_port_all} の価格を編集 / リセット")
+        current_row = PRICES_CFG.get(sel_port_all, {})
         cols = st.columns(2)
-        inputs: Dict[str,str] = {}
+        inputs_all = {}
         for i, (name, base) in enumerate(ITEMS_CFG):
             c = cols[i % 2]
-            default = "" if name not in current else str(current[name])
+            default = "" if name not in current_row else str(current_row[name])
             with c:
-                inputs[name] = st.text_input(f"{name} (base: {base})", value=default, key=f"{selected_port}_{name}")
+                inputs_all[name] = st.text_input(f"{name} (base: {base})", value=default, key=f"{sel_port_all}_{name}_all")
 
-        st.write("---")
-        col_ok, col_cancel, col_reload = st.columns([1,1,1])
-
-        with col_ok:
-            if st.button("この港の価格を保存"):
+        col_ok_all, col_reset_all, col_refresh_all = st.columns([1,1,1])
+        with col_ok_all:
+            if st.button("保存（この港）"):
                 new_row = {}
                 invalids = []
                 for name, base in ITEMS_CFG:
-                    raw = inputs.get(name, "")
+                    raw = inputs_all.get(name, "")
                     s = (raw or "").strip().replace(",", "")
                     s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
                     if s == "" or not re.fullmatch(r"\d+", s):
@@ -366,11 +398,11 @@ else:
                 if invalids:
                     st.error("不正な入力があります: " + ", ".join(invalids))
                 else:
-                    PRICES_CFG[selected_port] = new_row
+                    PRICES_CFG[sel_port_all] = new_row
                     cfg["PRICES"] = PRICES_CFG
                     try:
                         resp = save_cfg_to_jsonbin(cfg)
-                        st.success(f"{selected_port} を保存しました。HTTP {resp.status_code}")
+                        st.success(f"{sel_port_all} を保存しました。HTTP {resp.status_code}")
                         new_cfg = fetch_cfg_from_jsonbin()
                         if new_cfg:
                             cfg = new_cfg
@@ -381,14 +413,23 @@ else:
                     except Exception as e:
                         st.error(f"保存に失敗しました: {e}")
 
-        with col_cancel:
-            if st.button("入力をクリア"):
-                for name, _ in ITEMS_CFG:
-                    st.session_state.pop(f"{selected_port}_{name}", None)
-                safe_rerun()
+        with col_reset_all:
+            if st.button("この港を base にリセット"):
+                PRICES_CFG = reset_port_to_base(sel_port_all, ITEMS_CFG, PRICES_CFG)
+                cfg["PRICES"] = PRICES_CFG
+                try:
+                    resp = save_cfg_to_jsonbin(cfg)
+                    st.success(f"{sel_port_all} を base にリセットしました。HTTP {resp.status_code}")
+                    new_cfg = fetch_cfg_from_jsonbin()
+                    if new_cfg:
+                        cfg = new_cfg
+                        PRICES_CFG = cfg.get("PRICES", {})
+                        safe_rerun()
+                except Exception as e:
+                    st.error(f"リセットに失敗しました: {e}")
 
-        with col_reload:
-            if st.button("最新データを再取得"):
+        with col_refresh_all:
+            if st.button("最新データを再取得（全体）"):
                 new_cfg = fetch_cfg_from_jsonbin()
                 if new_cfg:
                     cfg = new_cfg
@@ -397,3 +438,160 @@ else:
                     safe_rerun()
                 else:
                     st.error("再取得に失敗しました。")
+
+    with tab_pop:
+        st.subheader("入力済みの港を選んで編集")
+        if populated_ports:
+            sel_pop = st.selectbox("編集する入力済み港", options=populated_ports, key="sel_pop")
+            st.markdown(f"## {sel_pop} の編集")
+            current = PRICES_CFG.get(sel_pop, {})
+            cols = st.columns(2)
+            inputs_pop = {}
+            for i, (name, base) in enumerate(ITEMS_CFG):
+                c = cols[i % 2]
+                default = "" if name not in current else str(current[name])
+                with c:
+                    inputs_pop[name] = st.text_input(f"{name} (base: {base})", value=default, key=f"{sel_pop}_{name}_pop")
+
+            col_ok_pop, col_reset_pop, col_refresh_pop = st.columns([1,1,1])
+            with col_ok_pop:
+                if st.button("保存（入力済み港）"):
+                    new_row = {}
+                    invalids = []
+                    for name, base in ITEMS_CFG:
+                        raw = inputs_pop.get(name, "")
+                        s = (raw or "").strip().replace(",", "")
+                        s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
+                        if s == "" or not re.fullmatch(r"\d+", s):
+                            invalids.append(name)
+                        else:
+                            v = int(s)
+                            if v < 0:
+                                invalids.append(name)
+                            else:
+                                new_row[name] = v
+                    if invalids:
+                        st.error("不正な入力があります: " + ", ".join(invalids))
+                    else:
+                        PRICES_CFG[sel_pop] = new_row
+                        cfg["PRICES"] = PRICES_CFG
+                        try:
+                            resp = save_cfg_to_jsonbin(cfg)
+                            st.success(f"{sel_pop} を保存しました。HTTP {resp.status_code}")
+                            new_cfg = fetch_cfg_from_jsonbin()
+                            if new_cfg:
+                                cfg = new_cfg
+                                PRICES_CFG = cfg.get("PRICES", {})
+                                safe_rerun()
+                            else:
+                                st.info("保存成功。ページを手動で再読み込みしてください。")
+                        except Exception as e:
+                            st.error(f"保存に失敗しました: {e}")
+
+            with col_reset_pop:
+                if st.button("この入力済み港を base にリセット"):
+                    PRICES_CFG = reset_port_to_base(sel_pop, ITEMS_CFG, PRICES_CFG)
+                    cfg["PRICES"] = PRICES_CFG
+                    try:
+                        resp = save_cfg_to_jsonbin(cfg)
+                        st.success(f"{sel_pop} を base にリセットしました。HTTP {resp.status_code}")
+                        new_cfg = fetch_cfg_from_jsonbin()
+                        if new_cfg:
+                            cfg = new_cfg
+                            PRICES_CFG = cfg.get("PRICES", {})
+                            safe_rerun()
+                    except Exception as e:
+                        st.error(f"リセットに失敗しました: {e}")
+
+            with col_refresh_pop:
+                if st.button("この港の最新データを再取得"):
+                    new_cfg = fetch_cfg_from_jsonbin()
+                    if new_cfg:
+                        cfg = new_cfg
+                        PRICES_CFG = cfg.get("PRICES", {})
+                        st.success("最新データを取得しました。")
+                        safe_rerun()
+                    else:
+                        st.error("再取得に失敗しました。")
+        else:
+            st.info("まだ入力済みの港はありません。")
+
+    with tab_missing:
+        st.subheader("未更新港を選んで編集")
+        if not_populated_ports:
+            sel_missing = st.selectbox("編集する未更新港", options=not_populated_ports, key="sel_missing")
+            st.markdown(f"## {sel_missing} の入力（未更新）")
+            current = PRICES_CFG.get(sel_missing, {})
+            cols = st.columns(2)
+            inputs_miss = {}
+            for i, (name, base) in enumerate(ITEMS_CFG):
+                c = cols[i % 2]
+                default = "" if name not in current else str(current[name])
+                with c:
+                    inputs_miss[name] = st.text_input(f"{name} (base: {base})", value=default, key=f"{sel_missing}_{name}_miss")
+
+            col_ok_miss, col_reset_miss, col_refresh_miss = st.columns([1,1,1])
+            with col_ok_miss:
+                if st.button("保存（未更新港）"):
+                    new_row = {}
+                    invalids = []
+                    for name, base in ITEMS_CFG:
+                        raw = inputs_miss.get(name, "")
+                        s = (raw or "").strip().replace(",", "")
+                        s = s.translate(str.maketrans("０１２３４５６７８９－＋．，", "0123456789-+.,"))
+                        if s == "" or not re.fullmatch(r"\d+", s):
+                            invalids.append(name)
+                        else:
+                            v = int(s)
+                            if v < 0:
+                                invalids.append(name)
+                            else:
+                                new_row[name] = v
+                    if invalids:
+                        st.error("不正な入力があります: " + ", ".join(invalids))
+                    else:
+                        PRICES_CFG[sel_missing] = new_row
+                        cfg["PRICES"] = PRICES_CFG
+                        try:
+                            resp = save_cfg_to_jsonbin(cfg)
+                            st.success(f"{sel_missing} を保存しました。HTTP {resp.status_code}")
+                            new_cfg = fetch_cfg_from_jsonbin()
+                            if new_cfg:
+                                cfg = new_cfg
+                                PRICES_CFG = cfg.get("PRICES", {})
+                                safe_rerun()
+                            else:
+                                st.info("保存成功。ページを手動で再読み込みしてください。")
+                        except Exception as e:
+                            st.error(f"保存に失敗しました: {e}")
+
+            with col_reset_miss:
+                if st.button("この未更新港を base にリセット（全項目 base 値セット）"):
+                    PRICES_CFG = reset_port_to_base(sel_missing, ITEMS_CFG, PRICES_CFG)
+                    cfg["PRICES"] = PRICES_CFG
+                    try:
+                        resp = save_cfg_to_jsonbin(cfg)
+                        st.success(f"{sel_missing} を base にリセットしました。HTTP {resp.status_code}")
+                        new_cfg = fetch_cfg_from_jsonbin()
+                        if new_cfg:
+                            cfg = new_cfg
+                            PRICES_CFG = cfg.get("PRICES", {})
+                            safe_rerun()
+                    except Exception as e:
+                        st.error(f"リセットに失敗しました: {e}")
+
+            with col_refresh_miss:
+                if st.button("この港の最新データを再取得"):
+                    new_cfg = fetch_cfg_from_jsonbin()
+                    if new_cfg:
+                        cfg = new_cfg
+                        PRICES_CFG = cfg.get("PRICES", {})
+                        st.success("最新データを取得しました。")
+                        safe_rerun()
+                    else:
+                        st.error("再取得に失敗しました。")
+
+    # 管理モード終了ボタン
+    if st.button("管理モードを終了して戻る"):
+        st.session_state["mode"] = "view"
+        safe_rerun()
