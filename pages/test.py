@@ -184,8 +184,8 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
-show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False)
+show_price_table = st.checkbox("価格表を表示（実価格）", value=False, key="chk_price_table")
+show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False, key="chk_corr_table")
 
 # 管理モードのセッション初期化
 if "mode" not in st.session_state:
@@ -202,11 +202,11 @@ if all_populated:
 
     with col_left:
         st.header("シミュレーション")
-        current_port = st.selectbox("現在港", PORTS_CFG, index=0)
+        current_port = st.selectbox("現在港", PORTS_CFG, index=0, key="sel_current_port")
         cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
 
         # 管理画面へ飛ぶボタン（シミュレーション側にも配置）
-        if st.button("管理画面を開く"):
+        if st.button("管理画面を開く", key="btn_open_admin_from_sim"):
             st.session_state["mode"] = "admin"
             safe_rerun()
 
@@ -225,17 +225,17 @@ if all_populated:
         for i, name in enumerate(top5):
             c = cols[i % 2]
             with c:
-                stock_inputs[name] = numeric_input_optional_strict(f"{name} 在庫数", key=f"stk_{name}", placeholder="例: 10", allow_commas=True, min_value=0)
+                stock_inputs[name] = numeric_input_optional_strict(f"{name} 在庫数", key=f"stk_{name}_sim", placeholder="例: 10", allow_commas=True, min_value=0)
 
-        top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
+        top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3, key="slider_topk")
 
-        if st.button("検索"):
+        if st.button("検索", key="btn_search_sim"):
             if cash is None:
                 st.error("所持金を入力してください（空欄不可）。")
             else:
                 invalid_found = False
                 for name in stock_inputs.keys():
-                    if st.session_state.get(f"stk_{name}_invalid", False):
+                    if st.session_state.get(f"stk_{name}_sim_invalid", False):
                         st.error(f"{name} の入力が不正です。")
                         invalid_found = True
                 if invalid_found:
@@ -357,7 +357,7 @@ else:
     # 未更新がある場合の案内（管理へ誘導）
     st.warning("一部の港が未更新です。管理画面で入力してください。")
     st.write("未更新港:", missing_ports)
-    if st.button("管理画面を開く（未更新港を編集）"):
+    if st.button("管理画面を開く（未更新港を編集）", key="btn_open_admin_from_missing"):
         st.session_state["mode"] = "admin"
         safe_rerun()
 
@@ -385,7 +385,7 @@ if st.session_state.get("mode") == "admin":
 
         col_ok_all, col_reset_all, col_refresh_all = st.columns([1,1,1])
         with col_ok_all:
-            if st.button("保存（この港）"):
+            if st.button("保存（この港）", key=f"save_all_{sel_port_all}"):
                 new_row = {}
                 invalids = []
                 for name, base in ITEMS_CFG:
@@ -419,7 +419,7 @@ if st.session_state.get("mode") == "admin":
                         st.error(f"保存に失敗しました: {e}")
 
         with col_reset_all:
-            if st.button("この港を base にリセット"):
+            if st.button("この港を base にリセット", key=f"reset_all_{sel_port_all}"):
                 PRICES_CFG = reset_port_to_base(sel_port_all, ITEMS_CFG, PRICES_CFG)
                 cfg["PRICES"] = PRICES_CFG
                 try:
@@ -434,7 +434,7 @@ if st.session_state.get("mode") == "admin":
                     st.error(f"リセットに失敗しました: {e}")
 
         with col_refresh_all:
-            if st.button("最新データを再取得（全体）"):
+            if st.button("最新データを再取得（全体）", key="refresh_all"):
                 new_cfg = fetch_cfg_from_jsonbin()
                 if new_cfg:
                     cfg = new_cfg
@@ -460,7 +460,7 @@ if st.session_state.get("mode") == "admin":
 
             col_ok_pop, col_reset_pop, col_refresh_pop = st.columns([1,1,1])
             with col_ok_pop:
-                if st.button("保存（入力済み港）"):
+                if st.button("保存（入力済み港）", key=f"save_pop_{sel_pop}"):
                     new_row = {}
                     invalids = []
                     for name, base in ITEMS_CFG:
@@ -494,7 +494,7 @@ if st.session_state.get("mode") == "admin":
                             st.error(f"保存に失敗しました: {e}")
 
             with col_reset_pop:
-                if st.button("この入力済み港を base にリセット"):
+                if st.button("この入力済み港を base にリセット", key=f"reset_pop_{sel_pop}"):
                     PRICES_CFG = reset_port_to_base(sel_pop, ITEMS_CFG, PRICES_CFG)
                     cfg["PRICES"] = PRICES_CFG
                     try:
@@ -509,7 +509,7 @@ if st.session_state.get("mode") == "admin":
                         st.error(f"リセットに失敗しました: {e}")
 
             with col_refresh_pop:
-                if st.button("この港の最新データを再取得"):
+                if st.button("この港の最新データを再取得", key=f"refresh_pop_{sel_pop}"):
                     new_cfg = fetch_cfg_from_jsonbin()
                     if new_cfg:
                         cfg = new_cfg
@@ -537,7 +537,7 @@ if st.session_state.get("mode") == "admin":
 
             col_ok_miss, col_reset_miss, col_refresh_miss = st.columns([1,1,1])
             with col_ok_miss:
-                if st.button("保存（未更新港）"):
+                if st.button("保存（未更新港）", key=f"save_miss_{sel_missing}"):
                     new_row = {}
                     invalids = []
                     for name, base in ITEMS_CFG:
@@ -571,7 +571,7 @@ if st.session_state.get("mode") == "admin":
                             st.error(f"保存に失敗しました: {e}")
 
             with col_reset_miss:
-                if st.button("この未更新港を base にリセット（全項目 base 値セット）"):
+                if st.button("この未更新港を base にリセット（全項目 base 値セット）", key=f"reset_miss_{sel_missing}"):
                     PRICES_CFG = reset_port_to_base(sel_missing, ITEMS_CFG, PRICES_CFG)
                     cfg["PRICES"] = PRICES_CFG
                     try:
@@ -586,7 +586,7 @@ if st.session_state.get("mode") == "admin":
                         st.error(f"リセットに失敗しました: {e}")
 
             with col_refresh_miss:
-                if st.button("この港の最新データを再取得"):
+                if st.button("この港の最新データを再取得", key=f"refresh_miss_{sel_missing}"):
                     new_cfg = fetch_cfg_from_jsonbin()
                     if new_cfg:
                         cfg = new_cfg
@@ -599,6 +599,6 @@ if st.session_state.get("mode") == "admin":
             st.info("未更新の港はありません。全ポートの一覧や入力済み港の編集タブをご利用ください。")
 
     # 管理モード終了ボタン
-    if st.button("管理モードを終了して戻る"):
+    if st.button("管理モードを終了して戻る", key="btn_close_admin"):
         st.session_state["mode"] = "view"
         safe_rerun()
