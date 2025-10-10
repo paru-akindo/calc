@@ -139,11 +139,10 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     return plan, total_cost, total_profit
 
 # --------------------
-# アプリ本体（最初の合成版を簡潔に整理）
+# アプリ本体
 # --------------------
-st.title("効率よく買い物しよう！ / 管理（色付きテーブル）")
+st.title("効率よく買い物しよう！ / 管理（色指定版）")
 
-# 1) JSON を取得（未取得なら組み込み定義）
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
     st.warning("jsonbin から読み込みできませんでした。組み込み定義を使用します。")
@@ -153,7 +152,7 @@ PORTS_CFG = cfg.get("PORTS", PORTS)
 ITEMS_CFG = normalize_items(cfg.get("ITEMS", [list(i) for i in ITEMS]))
 PRICES_CFG = cfg.get("PRICES", {})
 
-# 2) 全港入力確認（完全一致基準）
+# 全港入力チェック（完全一致基準）
 all_populated = True
 missing_ports = []
 for port in PORTS_CFG:
@@ -162,7 +161,6 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-# UI: 表示切替チェックボックス（メイン表示領域）
 show_price_table = st.checkbox("価格表を表示（実価格）", value=False)
 show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False)
 
@@ -244,7 +242,7 @@ if all_populated:
                             styled = df_disp.style.format(num_format, na_rep="")
                             st.dataframe(styled, height=240)
 
-    # テーブル表示（色付きグラデーション）
+    # テーブル表示（色変更：負はピンク、正は黄緑、0は白）
     with col_main:
         st.header("テーブル表示")
 
@@ -258,43 +256,35 @@ if all_populated:
                 rows.append(row)
             df_price = pd.DataFrame(rows).set_index("品目")
 
-            def price_cell_css(price_val, base):
+            def price_cell_css_simple(price_val, base):
                 try:
                     price_int = int(price_val)
                 except Exception:
                     return ""
-                pct = (price_int - base) / float(base) * 100 if base != 0 else 0.0
-                if pct > 20:
-                    pct = 20
-                if pct < -20:
-                    pct = -20
-                if pct >= 0:
-                    t = pct / 20.0
-                    r = int(255 * (0.9 * t + 0.1))
-                    g = int(255 * (1 - 0.8 * t))
-                    b = int(255 * (1 - 0.9 * t))
+                diff = price_int - base
+                if diff < 0:
+                    # マイナスはピンク（薄め）
+                    return "background-color: #ffc0cb; color: #000"
+                elif diff > 0:
+                    # プラスは黄緑（薄め）
+                    return "background-color: #c6f6b6; color: #000"
                 else:
-                    t = (-pct) / 20.0
-                    r = int(255 * (1 - 0.9 * t))
-                    g = int(255 * (0.9 * t + 0.1))
-                    b = int(255 * (1 - 0.9 * t))
-                text_color = "#000" if (r + g + b) > 380 else "#fff"
-                return f"background-color: rgb({r},{g},{b}); color: {text_color}"
+                    return ""
 
-            def price_styler(df):
+            def price_styler_simple(df):
                 sty = pd.DataFrame("", index=df.index, columns=df.columns)
                 base_map = dict(ITEMS_CFG)
                 for item in df.index:
                     base = base_map[item]
                     for col in df.columns:
-                        sty.at[item, col] = price_cell_css(df.at[item, col], base)
+                        sty.at[item, col] = price_cell_css_simple(df.at[item, col], base)
                 return sty
 
             st.subheader("実価格表")
-            styled_price = df_price.style.apply(lambda _: price_styler(df_price), axis=None)
+            styled_price = df_price.style.apply(lambda _: price_styler_simple(df_price), axis=None)
             st.dataframe(styled_price, height=380)
 
-        # 補正表（基礎値差を数値表示、%なし）
+        # 補正表（基礎値差を数値表示、符号あり）
         if show_correction_table:
             rows = []
             for item, base in ITEMS_CFG:
@@ -302,41 +292,31 @@ if all_populated:
                 for p in PORTS_CFG:
                     price = price_matrix[item][p]
                     pct = int(round((price - base) / float(base) * 100)) if base != 0 else 0
-                    row[p] = pct  # 表示は数値（例 -7, 10）
+                    row[p] = pct
                 rows.append(row)
             df_corr = pd.DataFrame(rows).set_index("品目")
 
-            def corr_cell_css(pct_val):
+            def corr_cell_css_simple(pct_val):
                 try:
                     v = int(pct_val)
                 except Exception:
                     return ""
-                if v > 20:
-                    v = 20
-                if v < -20:
-                    v = -20
-                if v >= 0:
-                    t = v / 20.0
-                    r = int(255 * (0.9 * t + 0.1))
-                    g = int(255 * (1 - 0.8 * t))
-                    b = int(255 * (1 - 0.9 * t))
+                if v < 0:
+                    return "background-color: #ffc0cb; color: #000"
+                elif v > 0:
+                    return "background-color: #c6f6b6; color: #000"
                 else:
-                    t = (-v) / 20.0
-                    r = int(255 * (1 - 0.9 * t))
-                    g = int(255 * (0.9 * t + 0.1))
-                    b = int(255 * (1 - 0.9 * t))
-                text_color = "#000" if (r + g + b) > 380 else "#fff"
-                return f"background-color: rgb({r},{g},{b}); color: {text_color}"
+                    return ""
 
-            def corr_styler(df):
+            def corr_styler_simple(df):
                 sty = pd.DataFrame("", index=df.index, columns=df.columns)
                 for item in df.index:
                     for col in df.columns:
-                        sty.at[item, col] = corr_cell_css(df.at[item, col])
+                        sty.at[item, col] = corr_cell_css_simple(df.at[item, col])
                 return sty
 
             st.subheader("基礎値100換算 補正（数値表示）")
-            styled_corr = df_corr.style.apply(lambda _: corr_styler(df_corr), axis=None)
+            styled_corr = df_corr.style.apply(lambda _: corr_styler_simple(df_corr), axis=None)
             styled_corr = styled_corr.format("{:+d}", na_rep="")
             st.dataframe(styled_corr, height=380)
 
