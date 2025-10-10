@@ -2,7 +2,7 @@
 import streamlit as st
 from typing import Dict, List, Tuple
 
-st.set_page_config(page_title="貿易 全港評価（複数品目購入可）", layout="wide")
+st.set_page_config(page_title="全港評価（上位5品目入力）", layout="wide")
 
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
@@ -50,10 +50,6 @@ def build_price_matrix_percent():
     return price
 
 def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, stock: Dict[str,int], price_matrix: Dict[str,Dict[str,int]]):
-    """
-    dest_port に向けて、current_port の在庫と所持金で複数商品を購入する貪欲プランを返す。
-    戻り: plan(list of (item, qty, buy_price, sell_price, unit_profit)), total_cost, total_profit
-    """
     candidates = []
     for item, base in ITEMS:
         avail = stock.get(item, 0)
@@ -65,7 +61,6 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
         if unit_profit <= 0:
             continue
         candidates.append((item, buy, sell, unit_profit, avail))
-    # 単位差益で降順ソート
     candidates.sort(key=lambda x: x[3], reverse=True)
     remaining_cash = cash
     plan = []
@@ -85,30 +80,47 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
 # UI --- 中央寄せ
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.title("全港評価：次に行く港 上位3 を提案")
+    st.title("全港評価：次に行く港 上位3 を提案（上位5品目入力）")
     price_matrix = build_price_matrix_percent()
 
     current_port = st.selectbox("現在港", PORTS, index=0)
     cash = st.number_input("所持金", min_value=0, value=5000, step=100)
 
-    st.write("現在港在庫（各品目の在庫数を入力してください）")
-    stock_inputs = {}
-    cols = st.columns(4)
+    # 現在港で補正%がマイナスの品目を抽出し、小さい（大きなマイナス）順に上位5を選ぶ
+    port_idx = PORTS.index(current_port)
+    item_pcts = []
     for i, (item_name, _) in enumerate(ITEMS):
-        c = cols[i % 4]
-        with c:
-            stock_inputs[item_name] = st.number_input(f"{item_name}", min_value=0, value=0, key=f"stk_{i}")
+        pct = MODIFIERS_PERCENT[i][port_idx]
+        item_pcts.append((item_name, pct))
+    negative_items = [t for t in item_pcts if t[1] < 0]
+    negative_items.sort(key=lambda x: x[1])  # -30, -20, -5 ...
+    top5_negative = negative_items[:5]
+
+    st.write("現在港で割安（補正%がマイナス）な上位5品目（この5つのみ在庫入力）")
+    stock_inputs = {}
+    if top5_negative:
+        cols = st.columns(2)
+        for i, (item_name, pct) in enumerate(top5_negative):
+            c = cols[i % 2]
+            with c:
+                stock_inputs[item_name] = st.number_input(f"{item_name} 在庫数", min_value=0, value=0, key=f"stk_{item_name}")
+    else:
+        st.info("該当港で補正%がマイナスの品目はありません。全品目を入力したい場合は指示してください。")
 
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
     if st.button("全港を評価"):
+        # current_stock は上位5で入力されたもののみ、他は0扱い
+        current_stock = {name: 0 for name, _ in ITEMS}
+        for name in stock_inputs:
+            current_stock[name] = stock_inputs[name]
+
         results = []
         for dest in PORTS:
             if dest == current_port:
                 continue
-            plan, cost, profit = greedy_plan_for_destination(current_port, dest, cash, stock_inputs, price_matrix)
+            plan, cost, profit = greedy_plan_for_destination(current_port, dest, cash, current_stock, price_matrix)
             results.append((dest, plan, cost, profit))
-        # 総利益で降順ソートして上位k
         results.sort(key=lambda x: x[3], reverse=True)
         top_results = results[:top_k]
 
