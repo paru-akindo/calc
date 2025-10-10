@@ -169,7 +169,7 @@ def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tu
 # --------------------
 # アプリ本体
 # --------------------
-st.title("効率よく買い物しよう！")
+st.title("効率よく買い物しよう！ / 管理（タブ式）")
 
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
@@ -189,10 +189,9 @@ for port in PORTS_CFG:
         all_populated = False
         missing_ports.append(port)
 
-show_price_table = st.checkbox("価格表を表示", value=False, key="chk_price_table")
-show_correction_table = st.checkbox("割引率を表示", value=False, key="chk_corr_table")
+show_price_table = st.checkbox("価格表を表示（実価格）", value=False, key="chk_price_table")
+show_correction_table = st.checkbox("補正表を表示（基礎値差）", value=False, key="chk_corr_table")
 
-# 管理モードのセッション初期化
 if "mode" not in st.session_state:
     st.session_state["mode"] = "view"
 
@@ -215,7 +214,7 @@ if all_populated:
             st.session_state["mode"] = "admin"
             safe_rerun()
 
-        # 在庫入力対象の選定（price/base 小さい順、同率は価格小さい順）
+        # 上位5の選定とラベル表示
         item_scores = []
         for item_name, base in ITEMS_CFG:
             this_price = price_matrix[item_name][current_port]
@@ -224,7 +223,7 @@ if all_populated:
         item_scores.sort(key=lambda t: (t[1], t[2]))
         top5 = item_scores[:5]
 
-        st.write("在庫入力（上位5）")
+        st.write("在庫入力（上位5）: 価格 / 基礎値 が小さい順、同率は価格が安い順")
         stock_inputs = {}
         cols = st.columns(2)
         for i, (name, ratio, price_val, base_val) in enumerate(top5):
@@ -287,10 +286,9 @@ if all_populated:
                             styled = df_disp.style.format(num_format, na_rep="")
                             st.dataframe(styled, height=240)
 
-    # 右側のテーブル表示
+    # テーブル表示（右カラム）
     with col_main:
         st.header("テーブル表示")
-
         if show_price_table:
             rows = []
             for item, base in ITEMS_CFG:
@@ -356,13 +354,12 @@ if all_populated:
                         sty.at[item, col] = corr_cell_css_simple(df.at[item, col])
                 return sty
 
-            st.subheader("割引率表")
+            st.subheader("基礎値100換算 補正（数値表示）")
             styled_corr = df_corr.style.apply(lambda _: corr_styler_simple(df_corr), axis=None)
             styled_corr = styled_corr.format("{:+d}", na_rep="")
             st.dataframe(styled_corr, height=380)
 
 else:
-    # 未更新がある場合はシミュレーションを表示せず、管理誘導のみ表示
     st.warning("一部の港が未更新です。管理画面で入力してください。")
     st.write("未更新港:", missing_ports)
     if st.button("管理画面を開く（未更新港を編集）", key="btn_open_admin_from_missing"):
@@ -370,14 +367,13 @@ else:
         safe_rerun()
 
 # --------------------
-# 管理画面（左右レイアウト: 左=未更新編集, 右=全ポート一覧）
+# 管理画面（タブ式: 未更新 / 全ポート）
 # --------------------
 if st.session_state.get("mode") == "admin":
     st.header("管理画面")
+    tab_missing, tab_all = st.tabs(["未更新港の編集", "全ポート一覧"])
 
-    left_col, right_col = st.columns([1, 1])
-
-    with left_col:
+    with tab_missing:
         st.subheader("未更新港の編集")
         if missing_ports:
             sel_missing = st.selectbox("編集する未更新港", options=missing_ports, key="sel_missing_admin")
@@ -469,7 +465,7 @@ if st.session_state.get("mode") == "admin":
             except Exception as e:
                 st.error(f"全件リセットに失敗しました: {e}")
 
-    with right_col:
+    with tab_all:
         st.subheader("全ポート一覧（編集／参照）")
         sel_port_all = st.selectbox("編集する港を選択（全ポート）", options=PORTS_CFG, key="sel_port_all_admin")
         st.markdown(f"## {sel_port_all} の価格（編集可）")
