@@ -169,7 +169,7 @@ def get_populated_ports(prices_cfg: Dict[str, Dict[str,int]], items_cfg: List[Tu
 # --------------------
 # アプリ本体
 # --------------------
-st.title("効率よく買い物しよう！ / 管理（簡潔版）")
+st.title("効率よく買い物しよう！ / 管理（在庫ラベル表示付き）")
 
 cfg = fetch_cfg_from_jsonbin()
 if cfg is None:
@@ -224,9 +224,9 @@ with col_left:
     for item_name, base in ITEMS_CFG:
         this_price = price_matrix[item_name][current_port]
         ratio = this_price / float(base) if base != 0 else float('inf')
-        item_scores.append((item_name, ratio, this_price))
+        item_scores.append((item_name, ratio, this_price, base))
+
     item_scores.sort(key=lambda t: (t[1], t[2]))
-    # 上位5
     top5 = item_scores[:5]
 
     st.write("在庫入力（上位5）: 価格 / 基礎値 が小さい順、同率は価格が安い順")
@@ -236,12 +236,10 @@ with col_left:
         pct = int(round((price_val - base_val) / float(base_val) * 100)) if base_val != 0 else 0
         sign_pct = f"{pct:+d}%"  # 例: -13% or +05%
         label = f"{name}({sign_pct}) 在庫数"
-        # ツールチップで詳細を示す（hover的に表示されるが、Streamlitは title で助長表示）
-        help_text = f"価格: {price_val} / 基礎: {base_val}"
+        help_text = f"現在価格: {price_val} / 基礎値: {base_val}"
         c = cols[i % 2]
         with c:
             stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}_sim", placeholder="例: 10", allow_commas=True, min_value=0)
-            # 補助表示（小さめ）
             st.caption(help_text)
 
     top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3, key="slider_topk")
@@ -299,7 +297,6 @@ with col_left:
 # --------------------
 with col_main:
     st.header("テーブル表示")
-    # 実価格表
     if show_price_table:
         rows = []
         for item, base in ITEMS_CFG:
@@ -335,7 +332,6 @@ with col_main:
         styled_price = df_price.style.apply(lambda _: price_styler_simple(df_price), axis=None)
         st.dataframe(styled_price, height=380)
 
-    # 補正表（基礎値差を数値表示）
     if show_correction_table:
         rows = []
         for item, base in ITEMS_CFG:
@@ -374,13 +370,9 @@ with col_main:
 # --------------------
 # 管理画面（左右レイアウト: 左=未更新編集, 右=全ポート一覧）
 # --------------------
-if "mode" not in st.session_state:
-    st.session_state["mode"] = "view"
-
 if st.session_state.get("mode") == "admin":
     st.header("管理画面")
 
-    # 左: 未更新港を編集（未更新が無ければ案内）
     left_col, right_col = st.columns([1, 1])
 
     with left_col:
@@ -461,7 +453,6 @@ if st.session_state.get("mode") == "admin":
             st.info("未更新の港はありません。")
 
         st.markdown("---")
-        # 全港一括で base にリセットするボタン（強力）
         if st.button("全港を base 値にリセット（注意: 上書きされます）", key="reset_all_global"):
             PRICES_CFG = reset_all_ports_to_base(ITEMS_CFG, PRICES_CFG, PORTS_CFG)
             cfg["PRICES"] = PRICES_CFG
@@ -476,10 +467,8 @@ if st.session_state.get("mode") == "admin":
             except Exception as e:
                 st.error(f"全件リセットに失敗しました: {e}")
 
-    # 右: 全ポート一覧（表示＋個別編集ボタンを用意）
     with right_col:
         st.subheader("全ポート一覧（編集／参照）")
-        # 簡易テーブル表示 + 各ポートを選んで編集するUI（別ウィジェット群）
         sel_port_all = st.selectbox("編集する港を選択（全ポート）", options=PORTS_CFG, key="sel_port_all_admin")
         st.markdown(f"## {sel_port_all} の価格（編集可）")
         current_row = PRICES_CFG.get(sel_port_all, {})
