@@ -2,7 +2,7 @@
 import streamlit as st
 from typing import Dict, List, Tuple
 
-st.set_page_config(page_title="貿易次動作提案（%補正）", layout="wide")
+st.set_page_config(page_title="貿易 次の一手提案（%補正）", layout="wide")
 
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
@@ -77,7 +77,6 @@ def recommend_next_steps_percent(
             qty = min(stock_here, max_by_cash)
             if qty <= 0:
                 continue
-            # 評価は単位差益ではなく想定総利益にも切替可能
             if unit_profit > best_unit_profit:
                 best_unit_profit = unit_profit
                 best_item = item
@@ -97,23 +96,39 @@ with col2:
     st.title("貿易 次の一手提案（補正値=%）")
     price_matrix = build_price_matrix_percent()
 
-    # 左メニューがある環境向けに中央入力フォーム
     current_port = st.selectbox("現在港", PORTS, index=0)
     cash = st.number_input("所持金", min_value=0, value=5000, step=100)
-    # 現在港在庫を簡易に入力するインターフェイス
-    st.write("現在港の在庫（0以上の整数を入力）")
-    stock_inputs = {}
-    cols = st.columns(4)
+
+    # 現在港の補正%から「マイナスが大きい上位5品目」を選出して入力欄にする
+    # 補正リストは MODIFIERS_PERCENT の順と ITEMS の順が対応している
+    # current_port のインデックスを求め、各品目の補正%を取得してソート
+    port_idx = PORTS.index(current_port)
+    item_pcts = []
     for i, (item_name, _) in enumerate(ITEMS):
-        c = cols[i % 4]
-        with c:
-            stock_inputs[item_name] = st.number_input(f"{item_name}", min_value=0, value=0, key=f"stk_{i}")
+        pct = MODIFIERS_PERCENT[i][port_idx]
+        item_pcts.append((item_name, pct))
+    # マイナスのみ抽出して小さい順（-30, -20, -5 ...）にソート、上位5
+    negative_items = [t for t in item_pcts if t[1] < 0]
+    negative_items.sort(key=lambda x: x[1])  # 小さい（大きなマイナス）順
+    top5_negative = negative_items[:5]
+
+    st.write("現在港で割安（補正%がマイナス）な上位5品目を表示します")
+    stock_inputs = {}
+    for item_name, pct in top5_negative:
+        st.write(f"{item_name} (補正 {pct}%)")
+        stock_inputs[item_name] = st.number_input(f"{item_name} 在庫数", min_value=0, value=0, key=f"stk_{item_name}")
+
+    # もしマイナス品目が5個未満ならその旨を表示
+    if len(top5_negative) < 5:
+        st.info("該当港で補正がマイナスの品目が5つ未満です。")
 
     score_mode = st.selectbox("ソート基準", ["total","unit"], index=0, format_func=lambda x: "総利益優先" if x=="total" else "単位差益優先")
     top_n = st.slider("表示上位数", min_value=3, max_value=12, value=6)
 
     if st.button("提案を表示"):
-        recs = recommend_next_steps_percent(current_port, cash, stock_inputs, price_matrix, top_n_ports=top_n, score_mode=score_mode)
+        # current_stock を入力された上位5品目のみで作る（その他は0扱い）
+        current_stock = {name: stock_inputs.get(name, 0) for name, _ in ITEMS}
+        recs = recommend_next_steps_percent(current_port, cash, current_stock, price_matrix, top_n_ports=top_n, score_mode=score_mode)
         if not recs:
             st.info("購入可能な利益商品が見つかりませんでした。所持金・在庫・港を確認してください。")
         else:
@@ -121,11 +136,8 @@ with col2:
             for dest, item, unit, qty, total in recs:
                 st.write(f"{dest} | {item} | {unit} | {qty} | {total}")
 
-# 補助表示（右寄せカラムに価格表を簡易表示）
 with col3:
     if st.checkbox("価格表を表示"):
-        st.write("価格（元値×(1+補正%/100)）")
-        # 表示量を抑えるため、簡易テーブルを作成
         import pandas as pd
         rows = []
         for item, _ in ITEMS:
