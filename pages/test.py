@@ -2,7 +2,7 @@
 import streamlit as st
 from typing import Dict, List, Tuple
 
-st.set_page_config(page_title="貿易 次の一手提案（%補正）", layout="wide")
+st.set_page_config(page_title="貿易 全港評価（複数品目購入可）", layout="wide")
 
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
@@ -49,92 +49,81 @@ def build_price_matrix_percent():
         price[name] = row
     return price
 
-def recommend_next_steps_percent(
-    current_port: str,
-    cash: int,
-    current_stock: Dict[str,int],
-    price_matrix: Dict[str,Dict[str,int]],
-    top_n_ports: int = 6,
-    score_mode: str = "total"
-) -> List[Tuple[str,str,int,int,int]]:
-    results = []
-    for dest in PORTS:
-        if dest == current_port:
+def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, stock: Dict[str,int], price_matrix: Dict[str,Dict[str,int]]):
+    """
+    dest_port に向けて、current_port の在庫と所持金で複数商品を購入する貪欲プランを返す。
+    戻り: plan(list of (item, qty, buy_price, sell_price, unit_profit)), total_cost, total_profit
+    """
+    candidates = []
+    for item, base in ITEMS:
+        avail = stock.get(item, 0)
+        if avail <= 0:
             continue
-        best_item = None
-        best_unit_profit = -10**9
-        best_qty = 0
-        for item, _base in ITEMS:
-            stock_here = current_stock.get(item, 0)
-            if stock_here <= 0:
-                continue
-            buy_price = price_matrix[item][current_port]
-            sell_price = price_matrix[item][dest]
-            unit_profit = sell_price - buy_price
-            if unit_profit <= 0:
-                continue
-            max_by_cash = cash // buy_price if buy_price > 0 else stock_here
-            qty = min(stock_here, max_by_cash)
-            if qty <= 0:
-                continue
-            if unit_profit > best_unit_profit:
-                best_unit_profit = unit_profit
-                best_item = item
-                best_qty = qty
-        if best_item is not None:
-            total_profit = best_unit_profit * best_qty
-            results.append((dest, best_item, best_unit_profit, best_qty, total_profit))
-    if score_mode == "unit":
-        results.sort(key=lambda x: x[2], reverse=True)
-    else:
-        results.sort(key=lambda x: x[4], reverse=True)
-    return results[:top_n_ports]
+        buy = price_matrix[item][current_port]
+        sell = price_matrix[item][dest_port]
+        unit_profit = sell - buy
+        if unit_profit <= 0:
+            continue
+        candidates.append((item, buy, sell, unit_profit, avail))
+    # 単位差益で降順ソート
+    candidates.sort(key=lambda x: x[3], reverse=True)
+    remaining_cash = cash
+    plan = []
+    for item, buy, sell, unit_profit, avail in candidates:
+        max_by_cash = remaining_cash // buy if buy > 0 else 0
+        qty = min(avail, max_by_cash)
+        if qty <= 0:
+            continue
+        plan.append((item, qty, buy, sell, unit_profit))
+        remaining_cash -= qty * buy
+        if remaining_cash <= 0:
+            break
+    total_cost = sum(q * b for _, q, b, _, _ in plan)
+    total_profit = sum(q * up for _, q, _, _, up in plan)
+    return plan, total_cost, total_profit
 
 # UI --- 中央寄せ
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.title("貿易 次の一手提案（補正値=%）")
+    st.title("全港評価：次に行く港 上位3 を提案")
     price_matrix = build_price_matrix_percent()
 
     current_port = st.selectbox("現在港", PORTS, index=0)
     cash = st.number_input("所持金", min_value=0, value=5000, step=100)
 
-    # 現在港の補正%から「マイナスが大きい上位5品目」を選出して入力欄にする
-    # 補正リストは MODIFIERS_PERCENT の順と ITEMS の順が対応している
-    # current_port のインデックスを求め、各品目の補正%を取得してソート
-    port_idx = PORTS.index(current_port)
-    item_pcts = []
-    for i, (item_name, _) in enumerate(ITEMS):
-        pct = MODIFIERS_PERCENT[i][port_idx]
-        item_pcts.append((item_name, pct))
-    # マイナスのみ抽出して小さい順（-30, -20, -5 ...）にソート、上位5
-    negative_items = [t for t in item_pcts if t[1] < 0]
-    negative_items.sort(key=lambda x: x[1])  # 小さい（大きなマイナス）順
-    top5_negative = negative_items[:5]
-
-    st.write("現在港で割安（補正%がマイナス）な上位5品目を表示します")
+    st.write("現在港在庫（各品目の在庫数を入力してください）")
     stock_inputs = {}
-    for item_name, pct in top5_negative:
-        st.write(f"{item_name} (補正 {pct}%)")
-        stock_inputs[item_name] = st.number_input(f"{item_name} 在庫数", min_value=0, value=0, key=f"stk_{item_name}")
+    cols = st.columns(4)
+    for i, (item_name, _) in enumerate(ITEMS):
+        c = cols[i % 4]
+        with c:
+            stock_inputs[item_name] = st.number_input(f"{item_name}", min_value=0, value=0, key=f"stk_{i}")
 
-    # もしマイナス品目が5個未満ならその旨を表示
-    if len(top5_negative) < 5:
-        st.info("該当港で補正がマイナスの品目が5つ未満です。")
+    top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
-    score_mode = st.selectbox("ソート基準", ["total","unit"], index=0, format_func=lambda x: "総利益優先" if x=="total" else "単位差益優先")
-    top_n = st.slider("表示上位数", min_value=3, max_value=12, value=6)
+    if st.button("全港を評価"):
+        results = []
+        for dest in PORTS:
+            if dest == current_port:
+                continue
+            plan, cost, profit = greedy_plan_for_destination(current_port, dest, cash, stock_inputs, price_matrix)
+            results.append((dest, plan, cost, profit))
+        # 総利益で降順ソートして上位k
+        results.sort(key=lambda x: x[3], reverse=True)
+        top_results = results[:top_k]
 
-    if st.button("提案を表示"):
-        # current_stock を入力された上位5品目のみで作る（その他は0扱い）
-        current_stock = {name: stock_inputs.get(name, 0) for name, _ in ITEMS}
-        recs = recommend_next_steps_percent(current_port, cash, current_stock, price_matrix, top_n_ports=top_n, score_mode=score_mode)
-        if not recs:
-            st.info("購入可能な利益商品が見つかりませんでした。所持金・在庫・港を確認してください。")
+        if not top_results or all(r[3] <= 0 for r in top_results):
+            st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
         else:
-            st.write("到着港 | 推奨品目 | 単位差益 | 購入上限 | 想定総利益")
-            for dest, item, unit, qty, total in recs:
-                st.write(f"{dest} | {item} | {unit} | {qty} | {total}")
+            for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
+                st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
+                if not plan:
+                    st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
+                    continue
+                st.write("品目 | 購入数 | 購入単価 | 売値 | 単位差益 | 想定利益")
+                for item, qty, buy, sell, unit_profit in plan:
+                    st.write(f"{item} | {qty} | {buy} | {sell} | {unit_profit} | {qty * unit_profit}")
+                st.write("---")
 
 with col3:
     if st.checkbox("価格表を表示"):
