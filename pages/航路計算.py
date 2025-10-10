@@ -82,7 +82,7 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
 # UI --- 中央寄せ
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.title("全港評価：次に行く港 上位3 を提案（上位5品目入力）")
+    st.title("効率よく買い物しよう！")
     price_matrix = build_price_matrix_percent()
 
     current_port = st.selectbox("現在港", PORTS, index=0)
