@@ -1,7 +1,8 @@
-# recommend_next_step_percent.py
-# Python 3.8+
+# main.py
+import streamlit as st
 from typing import Dict, List, Tuple
-import math
+
+st.set_page_config(page_title="貿易次動作提案（%補正）", layout="wide")
 
 PORTS = ["博多","開京","明州","泉州","広州","淡水","安南","ボニ","タイ","真臘","スル","三仏","ジョ","大光","天竺","セイ","ペル","大食","ミス","末羅"]
 
@@ -13,7 +14,6 @@ ITEMS = [
     ("象牙",1000),("鹿茸",1000)
 ]
 
-# 補正値は % として解釈する（例 -7 は -7%）
 MODIFIERS_PERCENT = [
     [-7,3,3,-8,0,-8,-1,-1,-6,-13,-3,8,6,19,5,-2,-2,5,9,3],
     [9,7,-8,0,-1,6,10,-6,-2,-7,-9,-5,-13,8,-1,4,-4,-4,20,0],
@@ -37,11 +37,7 @@ MODIFIERS_PERCENT = [
     [-9,-18,0,-6,2,0,-5,3,14,-3,-8,-6,-7,-5,7,3,-5,2,-6,-9]
 ]
 
-def build_price_matrix_percent() -> Dict[str, Dict[str, int]]:
-    """
-    各港の価格 = 元値 * (1 + 補正% / 100)
-    結果は四捨五入して整数にする
-    """
+def build_price_matrix_percent():
     price = {}
     for idx, (name, base) in enumerate(ITEMS):
         row = {}
@@ -59,13 +55,8 @@ def recommend_next_steps_percent(
     current_stock: Dict[str,int],
     price_matrix: Dict[str,Dict[str,int]],
     top_n_ports: int = 6,
-    score_mode: str = "unit"  # "unit" or "total"
+    score_mode: str = "total"
 ) -> List[Tuple[str,str,int,int,int]]:
-    """
-    戻り値: [(到着港, 推奨品目, 単位差益, 購入上限数量, 想定総利益), ...]
-    score_mode == "unit" : 単位差益でソート
-    score_mode == "total": 購入上限 * 単位差益 でソート
-    """
     results = []
     for dest in PORTS:
         if dest == current_port:
@@ -86,7 +77,7 @@ def recommend_next_steps_percent(
             qty = min(stock_here, max_by_cash)
             if qty <= 0:
                 continue
-            # 評価基準は単位差益優先。必要なら total に切替。
+            # 評価は単位差益ではなく想定総利益にも切替可能
             if unit_profit > best_unit_profit:
                 best_unit_profit = unit_profit
                 best_item = item
@@ -100,23 +91,47 @@ def recommend_next_steps_percent(
         results.sort(key=lambda x: x[4], reverse=True)
     return results[:top_n_ports]
 
-def print_recommendations(recs: List[Tuple[str,str,int,int,int]]):
-    print("到着港 | 推奨品目 | 単位差益 | 購入上限 | 想定総利益")
-    for dest, item, unit, qty, total in recs:
-        print(f"{dest} | {item} | {unit} | {qty} | {total}")
+# UI --- 中央寄せ
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.title("貿易 次の一手提案（補正値=%）")
+    price_matrix = build_price_matrix_percent()
 
-if __name__ == "__main__":
-    price = build_price_matrix_percent()
-    # サンプル入力
-    current_port = "博多"
-    cash = 5000
-    current_stock = {
-        "鳳梨": 50, "魚肉": 20, "酒": 10, "水稲": 0, "木材": 5, "ヤシ": 0,
-        "海鮮": 0, "絹糸": 0, "水晶": 3, "茶葉": 0, "鉄鉱": 0,
-        "香料": 1, "玉器": 0, "白銀": 0, "皮革": 0,
-        "真珠": 0, "燕の巣": 0, "陶器": 0,
-        "象牙": 0, "鹿茸": 0
-    }
-    recs = recommend_next_steps_percent(current_port, cash, current_stock, price, top_n_ports=8, score_mode="total")
-    print(f"現在港: {current_port} 所持金: {cash}")
-    print_recommendations(recs)
+    # 左メニューがある環境向けに中央入力フォーム
+    current_port = st.selectbox("現在港", PORTS, index=0)
+    cash = st.number_input("所持金", min_value=0, value=5000, step=100)
+    # 現在港在庫を簡易に入力するインターフェイス
+    st.write("現在港の在庫（0以上の整数を入力）")
+    stock_inputs = {}
+    cols = st.columns(4)
+    for i, (item_name, _) in enumerate(ITEMS):
+        c = cols[i % 4]
+        with c:
+            stock_inputs[item_name] = st.number_input(f"{item_name}", min_value=0, value=0, key=f"stk_{i}")
+
+    score_mode = st.selectbox("ソート基準", ["total","unit"], index=0, format_func=lambda x: "総利益優先" if x=="total" else "単位差益優先")
+    top_n = st.slider("表示上位数", min_value=3, max_value=12, value=6)
+
+    if st.button("提案を表示"):
+        recs = recommend_next_steps_percent(current_port, cash, stock_inputs, price_matrix, top_n_ports=top_n, score_mode=score_mode)
+        if not recs:
+            st.info("購入可能な利益商品が見つかりませんでした。所持金・在庫・港を確認してください。")
+        else:
+            st.write("到着港 | 推奨品目 | 単位差益 | 購入上限 | 想定総利益")
+            for dest, item, unit, qty, total in recs:
+                st.write(f"{dest} | {item} | {unit} | {qty} | {total}")
+
+# 補助表示（右寄せカラムに価格表を簡易表示）
+with col3:
+    if st.checkbox("価格表を表示"):
+        st.write("価格（元値×(1+補正%/100)）")
+        # 表示量を抑えるため、簡易テーブルを作成
+        import pandas as pd
+        rows = []
+        for item, _ in ITEMS:
+            row = {"品目": item}
+            for p in PORTS:
+                row[p] = price_matrix[item][p]
+            rows.append(row)
+        df = pd.DataFrame(rows)
+        st.dataframe(df.set_index("品目"), height=600)
