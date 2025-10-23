@@ -183,6 +183,12 @@ def fetch_price_matrix_from_csv_auto(url: str):
 # --------------------
 st.title("効率よく買い物しよう！")
 
+# 先頭に追加
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid={GID}"
+
+# 画面上部（タイトルのすぐ下など）に表示
+st.markdown(f'<div style="margin-top:6px;"><a href="{SPREADSHEET_URL}" target="_blank" rel="noopener noreferrer">スプレッドシートを開く（編集・表示）</a></div>', unsafe_allow_html=True)
+
 # 価格取得
 try:
     ports, price_matrix = fetch_price_matrix_from_csv_auto(CSV_URL)
