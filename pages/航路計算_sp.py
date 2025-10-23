@@ -114,32 +114,69 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
 #  2行目以降: 各港の行（左端が港名）
 # --------------------
 @st.cache_data(ttl=60)
-def fetch_price_matrix_from_csv(url: str):
+def fetch_price_matrix_from_csv_auto(url: str):
     r = requests.get(url, timeout=10)
     r.raise_for_status()
     s = r.content.decode("utf-8")
     df = pd.read_csv(StringIO(s))
-    # 期待: 左端の列名が "港名" または "port" など。まずは左端を港名列と見なす。
+
     if df.shape[1] < 2:
-        raise ValueError("スプレッドシートに品目列が見つかりません。")
-    port_col = df.columns[0]
-    ports = df[port_col].astype(str).tolist()
-    # build price matrix: use ITEMS order/names to extract columns
-    price_matrix = {name: {} for name, _ in ITEMS}
-    for name, _ in ITEMS:
-        if name not in df.columns:
-            # missing column -> fill zeros
-            for p in ports:
-                price_matrix[name][p] = 0
-        else:
-            for idx, p in enumerate(ports):
-                raw = df.at[idx, name]
-                try:
-                    price_matrix[name][p] = int(raw)
-                except Exception:
-                    # empty or non-int -> treat as 0
+        raise ValueError("スプレッドシートに品目列/港列が見つかりません。")
+
+    # 判定: 1列目の値が既知の港名リストにマッチするか、あるいは1行目が既知の品目名にマッチするか
+    first_col_name = df.columns[0]
+    first_col_values = df[first_col_name].astype(str).tolist()
+
+    # ITEMS の名前リスト（コード内定義順）
+    items_names = [name for name, _ in ITEMS]
+    # ports 候補はヘッダの2列目以降（もし行が品目の形式ならヘッダーが港名になる）
+    header_ports = list(df.columns[1:])
+
+    # 判定1: 行が港になっているか（1列目の値が港名候補に含まれる）
+    row_is_port = all(val in header_ports or val in header_ports or val in first_col_values for val in first_col_values)  # fallback, not strict
+
+    # より確実な判定: 1列目のいずれかが ITEMS 名に含まれる -> 行が品目形式（要転置）
+    any_first_col_is_item = any(v in items_names for v in first_col_values)
+    if any_first_col_is_item:
+        # ファイルは行=品目、列=港の形式。転置して扱う。
+        # 現在 df.index are items, columns are ['港名1','港2',...]
+        # Ensure first column is item names
+        df_items = df.set_index(df.columns[0])
+        df_t = df_items.transpose().reset_index()
+        # 新しい df_t: first col is port name in column 'index' or original header name
+        port_col = df_t.columns[0]
+        ports = df_t[port_col].astype(str).tolist()
+        # build price matrix using ITEMS order
+        price_matrix = {name: {} for name, _ in ITEMS}
+        for name, _ in ITEMS:
+            if name in df_t.columns:
+                for idx, p in enumerate(ports):
+                    raw = df_t.at[idx, name]
+                    try:
+                        price_matrix[name][p] = int(raw)
+                    except Exception:
+                        price_matrix[name][p] = 0
+            else:
+                for p in ports:
                     price_matrix[name][p] = 0
-    return ports, price_matrix
+        return ports, price_matrix
+    else:
+        # 想定通り 行=港、列=品目 の形式
+        port_col = df.columns[0]
+        ports = df[port_col].astype(str).tolist()
+        price_matrix = {name: {} for name, _ in ITEMS}
+        for name, _ in ITEMS:
+            if name in df.columns:
+                for idx, p in enumerate(ports):
+                    raw = df.at[idx, name]
+                    try:
+                        price_matrix[name][p] = int(raw)
+                    except Exception:
+                        price_matrix[name][p] = 0
+            else:
+                for p in ports:
+                    price_matrix[name][p] = 0
+        return ports, price_matrix
 
 # --------------------
 # UI
