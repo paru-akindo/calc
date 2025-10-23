@@ -260,7 +260,7 @@ with col2:
                     st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
                 else:
                     for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
-                        st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
+                        st.markdown(f"### {rank}. 到着先: {dest}  想定利益: {profit}")
                         
                         if not plan:
                             st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
