@@ -185,7 +185,7 @@ st.title("効率よく買い物しよう！ / 公開スプレッドシート参�
 
 # 価格取得
 try:
-    ports, price_matrix = fetch_price_matrix_from_csv(CSV_URL)
+    ports, price_matrix = fetch_price_matrix_from_csv_auto(CSV_URL)
 except Exception as e:
     st.error(f"スプレッドシート（CSV）からの読み込みに失敗しました: {e}")
     st.stop()
