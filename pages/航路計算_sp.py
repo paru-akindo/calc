@@ -260,30 +260,41 @@ with col2:
                     st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
                 else:
                     for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
-                        st.markdown(f"### {rank}. 到着先: {dest}  想定利益: {profit}")
+                        st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
+                        
                         if not plan:
                             st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
                             continue
-                        df_out = pd.DataFrame([{
-                            "品目": item,
-                            "購入数": qty,
-                            "想定利益": qty * unit_profit
-                        } for item, qty, buy, sell, unit_profit in plan])
+
+                        # 購入候補だけを使って DataFrame を作成（余計な列や NaN を生まない）
+                        df_rows = []
+                        for item, qty, buy, sell, unit_profit in plan:
+                            df_rows.append({
+                                "品目": item,
+                                "購入数": int(qty),
+                                "想定利益": int(qty * unit_profit)
+                            })
+                        df_out = pd.DataFrame(df_rows)
+
+                        # 合計行（数値列は合計、その他はラベル）
                         totals = {
                             "品目": "合計",
                             "購入数": int(df_out["購入数"].sum()) if not df_out.empty else 0,
                             "想定利益": int(df_out["想定利益"].sum()) if not df_out.empty else 0
                         }
                         df_disp = pd.concat([df_out, pd.DataFrame([totals])], ignore_index=True)
-                        num_format = {
-                            "購入単価": "{:,.0f}",
-                            "売価": "{:,.0f}",
-                            "単位差益": "{:,.0f}",
-                            "購入数": "{:,.0f}",
-                            "想定利益": "{:,.0f}"
-                        }
-                        styled = df_disp.style.format(num_format, na_rep="")
-                        st.dataframe(styled, height=240)
+
+                        # フォーマットして表示（行数に応じた高さを指定）
+                        try:
+                            num_format = {
+                                "購入数": "{:,.0f}",
+                                "想定利益": "{:,.0f}"
+                            }
+                            styled = df_disp.style.format(num_format, na_rep="")
+                            st.dataframe(styled, height=max(200, 40 * (len(df_disp) + 1)))
+                        except Exception:
+                            st.table(df_disp)
+
                         st.write("---")
 
 with col3:
