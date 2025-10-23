@@ -181,7 +181,7 @@ def fetch_price_matrix_from_csv_auto(url: str):
 # --------------------
 # UI
 # --------------------
-st.title("効率よく買い物しよう！ / 公開スプレッドシート参照版")
+st.title("効率よく買い物しよう！")
 
 # 価格取得
 try:
@@ -189,10 +189,6 @@ try:
 except Exception as e:
     st.error(f"スプレッドシート（CSV）からの読み込みに失敗しました: {e}")
     st.stop()
-
-# 簡易チェック: 取得した港リストを表示（非必須）
-if st.checkbox("取得した港一覧を表示"):
-    st.write(ports)
 
 # 中央レイアウト
 col1, col2, col3 = st.columns([1, 2, 1])
@@ -213,24 +209,24 @@ with col2:
     item_scores.sort(key=lambda t: (t[3], t[1]))
     top5 = item_scores[:5]
 
-    st.write("在庫入力対象（お買い得上位5）: 現在港の価格/基礎値 が小さい順")
+    st.write("在庫入力対象（お買い得上位5）")
     stock_inputs = {}
     # 行ごと2カラムで表示（スマホでも順序崩れない）
     for row_start in range(0, len(top5), 2):
         c_left, c_right = st.columns(2)
         name, buy, base, ratio = top5[row_start]
         pct = int(round((buy - base) / base * 100)) if base != 0 and buy>0 else 0
-        label = f"{name}（価格: {buy}, 基礎値: {base}, 補正: {pct:+d}%） 在庫数"
+        label = f"{name}（価格: {buy}, 補正: {pct:+d}%）"
         with c_left:
-            stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}", placeholder="例: 10", allow_commas=True, min_value=0)
+            stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}", placeholder="在庫数", allow_commas=True, min_value=0)
         if row_start + 1 < len(top5):
             name2, buy2, base2, ratio2 = top5[row_start+1]
             pct2 = int(round((buy2 - base2) / base2 * 100)) if base2 != 0 and buy2>0 else 0
-            label2 = f"{name2}（価格: {buy2}, 基礎値: {base2}, 補正: {pct2:+d}%） 在庫数"
+            label2 = f"{name2}（価格: {buy2}, 補正: {pct2:+d}%）"
             with c_right:
-                stock_inputs[name2] = numeric_input_optional_strict(label2, key=f"stk_{name2}", placeholder="例: 10", allow_commas=True, min_value=0)
+                stock_inputs[name2] = numeric_input_optional_strict(label2, key=f"stk_{name2}", placeholder="在庫数", allow_commas=True, min_value=0)
 
-    top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
+    top_k = st.slider("上位何港を出すか（上位k）", min_value=1, max_value=10, value=3)
 
     if st.button("検索"):
         if cash is None:
@@ -264,24 +260,18 @@ with col2:
                     st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
                 else:
                     for rank, (dest, plan, cost, profit) in enumerate(top_results, start=1):
-                        st.markdown(f"### {rank}. 到着先: {dest}  想定合計利益: {profit}  合計購入金額: {cost}")
+                        st.markdown(f"### {rank}. 到着先: {dest}  想定利益: {profit}")
                         if not plan:
                             st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
                             continue
                         df_out = pd.DataFrame([{
                             "品目": item,
                             "購入数": qty,
-                            "購入単価": buy,
-                            "売価": sell,
-                            "単位差益": unit_profit,
                             "想定利益": qty * unit_profit
                         } for item, qty, buy, sell, unit_profit in plan])
                         totals = {
                             "品目": "合計",
                             "購入数": int(df_out["購入数"].sum()) if not df_out.empty else 0,
-                            "購入単価": np.nan,
-                            "売価": np.nan,
-                            "単位差益": np.nan,
                             "想定利益": int(df_out["想定利益"].sum()) if not df_out.empty else 0
                         }
                         df_disp = pd.concat([df_out, pd.DataFrame([totals])], ignore_index=True)
