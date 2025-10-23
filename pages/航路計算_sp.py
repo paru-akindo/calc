@@ -268,7 +268,7 @@ with col2:
                               <span style="font-size:1.15em; font-weight:700; color:#111;">{dest}</span>
                               <span style="margin:0 8px; color:#ccc;">|</span>
                               <span style="font-size:0.85em; color:#444; margin-right:4px;">想定利益</span>
-                              <span style="font-size:1.15em; font-weight:700; color:#0b6;">{profit:,}</span>
+                              <span style="font-size:1.15em; font-weight:700; color:#111;">{profit:,}</span>
                             </div>
                             ''',
                             unsafe_allow_html=True
