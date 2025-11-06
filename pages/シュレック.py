@@ -49,6 +49,7 @@ upgrade_info = {
         {"level": 4, "time": 15, "cost": 23000},
         {"level": 5, "time": 12, "cost": 31850},
         {"level": 6, "time": 10, "cost": 58800},
+        {"level": 7, "time": 10, "cost": 58800},
     ],
     "教室_B": [
         {"level": 1, "time": 60, "cost": 0},
