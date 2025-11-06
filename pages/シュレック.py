@@ -163,11 +163,11 @@ def merge_pmfs(pmfs: List[Dict[int, float]]) -> Dict[int, float]:
 _expected_cache: Dict[Tuple[int, Tuple[int, ...]], float] = {}
 
 def get_classroom_hist(levels: Dict[str, int]) -> Tuple[int, ...]:
-    counts = {i: 0 for i in range(1, 7)}
+    counts = {i: 0 for i in range(1, 8)}
     for i in range(1, 6):
         lvl = levels.get(f"教室_A{i}", 1)
         counts[lvl] += 1
-    return tuple(counts[i] for i in range(1, 7))
+    return tuple(counts[i] for i in range(1, 8))
 
 def combine_classroom_distribution(hist: Tuple[int, ...]) -> Dict[int, float]:
     pmfs = []
