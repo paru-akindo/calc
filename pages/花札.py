@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_sortables import sort_items
 
-st.title("神経衰弱記録（盤面を固定サイズに）")
+st.title("神経衰弱記録（盤面を固定サイズに安定化）")
 
 # --- 初期化 ---
 if "board" not in st.session_state:
@@ -28,11 +28,19 @@ containers = [
 sorted_containers = sort_items(containers, multi_containers=True)
 
 # --- 返り値から盤面を更新 ---
-for c in sorted_containers:
-    if c.get("name") == "盤面":
-        new_board = c.get("items", [])
-        # 常に6マスに補正
-        st.session_state.board = (new_board + ["空"]*6)[:6]
+def get_items(result, name):
+    if isinstance(result, list):  # list[dict] の場合
+        for c in result:
+            if isinstance(c, dict) and c.get("name") == name:
+                return c.get("items", [])
+    elif isinstance(result, dict):  # dict[str, list] の場合
+        return result.get(name, [])
+    return []
+
+new_board = get_items(sorted_containers, "盤面")
+
+# 常に6マスに補正
+st.session_state.board = (new_board + ["空"]*6)[:6]
 
 # --- 盤面を描画（2×3） ---
 cols_per_row = 3
