@@ -9,7 +9,7 @@ board_size = st.selectbox("盤面サイズを選択", ["2x3", "3x4", "4x4", "4x5
 rows, cols = map(int, board_size.split("x"))
 
 # カード画像の準備（images/ ディレクトリに置いたものを参照）
-card_images = [f"../image/{i}.png" for i in range(1, 11)]
+card_images = [f"image/{i}.png" for i in range(1, 11)]
 
 st.sidebar.header("カード一覧")
 for img in card_images:
