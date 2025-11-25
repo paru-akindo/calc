@@ -10,15 +10,13 @@ with elements("board"):
     ]
 
     with dashboard.Grid(layout, cols=2, rowHeight=130):
-        # 枠を描画
-        with dashboard.Item("cell-0-0"):
-            mui.Box(sx={"border":"2px solid red","height":120,"width":90})
+        # 枠
+        mui.Box("cell-0-0", sx={"border": "2px solid red", "height": 120, "width": 90})
 
-        # カードを描画
-        with dashboard.Item("card-1"):
-            mui.Card(sx={"width":90})(
-                mui.CardMedia(
-                    image="https://raw.githubusercontent.com/paru-akindo/calc/main/image/1.png",
-                    sx={"height":120}
-                )
+        # カード
+        mui.Card("card-1", sx={"width": 90})(
+            mui.CardMedia(
+                image="https://raw.githubusercontent.com/paru-akindo/calc/main/image/1.png",
+                sx={"height": 120}
             )
+        )
