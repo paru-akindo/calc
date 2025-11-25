@@ -23,8 +23,11 @@ containers = [
 # 並べ替え
 sorted_cards = sort_items(containers, multi_containers=True)
 
-# 盤面を取り出す（辞書アクセス）
-board = sorted_cards["盤面"]
+# 盤面を取り出す（リストを走査）
+board = []
+for c in sorted_cards:
+    if c["name"] == "盤面":
+        board = c["items"]
 
 # 盤面を描画（2×3）
 cols_per_row = 3
