@@ -1,21 +1,12 @@
 import streamlit as st
-from streamlit_elements import elements, dashboard, mui
+from streamlit_sortables import sort_items
 
-st.set_page_config(layout="wide")
+st.title("Streamlit Sortables Demo")
 
-with elements("demo"):
-    layout = [
-        dashboard.Item("first", 0, 0, 2, 2),
-    ]
+# 並べ替え対象のリスト
+items = ["松", "桜", "菊", "梅"]
 
-    with dashboard.Grid(layout, cols=2, rowHeight=150):
-        mui.Box(
-            "first",
-            sx={
-                "bgcolor": "black",   # 背景を黒に
-                "color": "red",       # 文字色を赤に
-                "height": 120,
-                "width": 120,
-                "border": "5px solid yellow"  # 太い黄色の枠線
-            }
-        )("VISIBLE")
+# sort_items で並べ替え可能にする
+sorted_items = sort_items(items, multi_containers=False)
+
+st.write("並べ替え後のリスト:", sorted_items)
