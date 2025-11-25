@@ -1,11 +1,7 @@
 import streamlit as st
 from streamlit_sortables import sort_items
 
-st.title("神経衰弱記録（盤面を固定サイズに安定化）")
-
-# --- 初期化 ---
-if "board" not in st.session_state:
-    st.session_state.board = [f"1-{i+1}" for i in range(6)]  # 初期盤面は全部1
+st.title("神経衰弱記録（盤面は可変長）")
 
 # ユーザが種類ごとの枚数を選ぶ
 card_defs = {}
@@ -18,43 +14,31 @@ for kind, count in card_defs.items():
     for i in range(count):
         hand_items.append(f"{kind}-{i+1}")
 
-# コンテナを渡す（盤面は常に session_state.board を使う）
+# コンテナを渡す（盤面は最初は空）
 containers = [
     {"name": "手札", "items": hand_items},
-    {"name": "盤面", "items": st.session_state.board}
+    {"name": "盤面", "items": []}
 ]
 
 # 並べ替え UI
 sorted_containers = sort_items(containers, multi_containers=True)
 
-# --- 返り値から盤面を更新 ---
-def get_items(result, name):
-    if isinstance(result, list):  # list[dict] の場合
-        for c in result:
-            if isinstance(c, dict) and c.get("name") == name:
-                return c.get("items", [])
-    elif isinstance(result, dict):  # dict[str, list] の場合
-        return result.get(name, [])
-    return []
+# 盤面を取り出す（返り値は list[dict]）
+board = []
+for c in sorted_containers:
+    if c.get("name") == "盤面":
+        board = c.get("items", [])
 
-new_board = get_items(sorted_containers, "盤面")
-
-# 常に6マスに補正
-st.session_state.board = (new_board + ["空"]*6)[:6]
-
-# --- 盤面を描画（2×3） ---
+# 盤面を描画（3列で自動改行）
 cols_per_row = 3
-rows = [st.session_state.board[i:i+cols_per_row] for i in range(0, 6, cols_per_row)]
+rows = [board[i:i+cols_per_row] for i in range(0, len(board), cols_per_row)]
 
-st.subheader("盤面表示 2×3")
+st.subheader("盤面表示")
 for row in rows:
-    cols = st.columns(3)
+    cols = st.columns(len(row))
     for col, card in zip(cols, row):
-        if str(card).startswith("空"):
-            col.write("空")
-        else:
-            kind = str(card).split("-")[0]
-            col.image(
-                f"https://raw.githubusercontent.com/paru-akindo/calc/master/image/{kind}.png",
-                width=80,
-            )
+        kind = card.split("-")[0]
+        col.image(
+            f"https://raw.githubusercontent.com/paru-akindo/calc/master/image/{kind}.png",
+            width=80,
+        )
