@@ -9,19 +9,27 @@ for kind in ["1","2","3","4","5","6","7","8","9","10"]:
     card_defs[kind] = st.number_input(f"{kind}の枚数", min_value=0, max_value=4, value=2)
 
 # ユニークID生成
-cards = {}
-cards["手札"] = []
-cards["盤面"] = []
-
+hand_items = []
 for kind, count in card_defs.items():
     for i in range(count):
-        cards["手札"].append(f"{kind}-{i+1}")
+        hand_items.append(f"{kind}-{i+1}")
 
-# 並べ替え（手札→盤面へ移動可能）
-sorted_cards = sort_items(cards, multi_containers=True)
+# コンテナをリスト形式で渡す（ここが重要）
+containers = [
+    {"name": "手札", "items": hand_items},
+    {"name": "盤面", "items": []}
+]
+
+# 並べ替え
+sorted_cards = sort_items(containers, multi_containers=True)
+
+# 盤面を取り出す
+board = []
+for c in sorted_cards:
+    if c["name"] == "盤面":
+        board = c["items"]
 
 # 盤面を描画（2×3）
-board = sorted_cards.get("盤面", [])
 cols_per_row = 3
 rows = [board[i:i+cols_per_row] for i in range(0, len(board), cols_per_row)]
 
