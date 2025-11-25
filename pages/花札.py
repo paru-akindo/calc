@@ -1,9 +1,9 @@
 import streamlit as st
-from streamlit_elements import elements, mui, dashboard
+from streamlit_elements import elements, dashboard, mui
 
 st.set_page_config(layout="wide")
 
-with elements("board"):
+with elements("demo"):
     layout = [
         dashboard.Item("cell-0-0", 0, 0, 1, 1),
         dashboard.Item("card-1", 1, 0, 1, 1),
