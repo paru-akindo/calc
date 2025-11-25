@@ -55,6 +55,6 @@ with elements("board"):
                     style={"height": 120}
                 ),
                 mui.CardContent(
-                    mui.Typography(f"カード{idx}", variant="body2")
+                    mui.Typography("トランプ", variant="body2")
                 )
             )
