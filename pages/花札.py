@@ -25,14 +25,20 @@ containers = [
 
 sorted_containers = sort_items(containers, multi_containers=True)
 
-# 盤面を取り出す
-board = []
-for c in sorted_containers:
-    if c["name"] == "盤面":
-        board = c["items"]
+# --- 返り値の形に合わせて安全に取り出す ---
+def get_items(result, name):
+    if isinstance(result, list):  # list[dict] の場合
+        for c in result:
+            if isinstance(c, dict) and c.get("name") == name:
+                return c.get("items", [])
+    elif isinstance(result, dict):  # dict[str, list] の場合
+        return result.get(name, [])
+    return []
 
-# --- ここで盤面を常に6マスに調整 ---
-fixed_board = board[:6]  # 余分なら切り捨て
+board = get_items(sorted_containers, "盤面")
+
+# --- 常に6マスに調整 ---
+fixed_board = board[:6]
 while len(fixed_board) < 6:
     fixed_board.append("空")
 
