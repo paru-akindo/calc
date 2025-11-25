@@ -30,31 +30,31 @@ with elements("board"):
 
     # Grid 表示
     with dashboard.Grid(layout, cols=cols, rowHeight=130, preventCollision=False, compactType=None):
-        # 枠を描画（各 Item に紐付けて描画）
+        # 枠を描画（key を一致させる）
         for r in range(rows):
             for c in range(cols):
-                with dashboard.Item(f"cell-{r}-{c}"):
-                    mui.Box(
-                        sx={
-                            "border": "2px dashed #888",
-                            "height": "120px",
-                            "width": "90px",
-                            "bgcolor": "#f5f5f5",
-                            "borderRadius": "6px"
-                        }
-                    )
-
-        # カードを描画（各 Item に紐付けて描画）
-        for idx, img in enumerate(card_images, start=1):
-            with dashboard.Item(f"card-{idx}"):
-                mui.Card(
-                    sx={"width": "90px", "m": 0.5, "zIndex": 1}
-                )(
-                    mui.CardMedia(
-                        image=img,
-                        sx={"height": 120}
-                    ),
-                    mui.CardContent(
-                        mui.Typography("トランプ", variant="body2")
-                    )
+                mui.Box(
+                    key=f"cell-{r}-{c}",
+                    sx={
+                        "border": "2px dashed #888",
+                        "height": "120px",
+                        "width": "90px",
+                        "bgcolor": "#f5f5f5",
+                        "borderRadius": "6px"
+                    }
                 )
+
+        # カードを描画（key を一致させる）
+        for idx, img in enumerate(card_images, start=1):
+            mui.Card(
+                key=f"card-{idx}",
+                sx={"width": "90px", "m": 0.5, "zIndex": 1}
+            )(
+                mui.CardMedia(
+                    image=img,
+                    sx={"height": 120}
+                ),
+                mui.CardContent(
+                    mui.Typography("トランプ", variant="body2")
+                )
+            )
