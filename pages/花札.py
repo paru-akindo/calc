@@ -14,7 +14,7 @@ for kind, count in card_defs.items():
     for i in range(count):
         hand_items.append(f"{kind}-{i+1}")
 
-# コンテナをリスト形式で渡す（ここが重要）
+# コンテナをリスト形式で渡す
 containers = [
     {"name": "手札", "items": hand_items},
     {"name": "盤面", "items": []}
@@ -23,11 +23,8 @@ containers = [
 # 並べ替え
 sorted_cards = sort_items(containers, multi_containers=True)
 
-# 盤面を取り出す
-board = []
-for c in sorted_cards:
-    if c["name"] == "盤面":
-        board = c["items"]
+# 盤面を取り出す（辞書アクセス）
+board = sorted_cards["盤面"]
 
 # 盤面を描画（2×3）
 cols_per_row = 3
