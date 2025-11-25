@@ -35,13 +35,11 @@ with elements("board"):
             for c in range(cols):
                 mui.Paper(
                     "",  # ラベルなし
-                    elevation=1,
+                    elevation=0,
                     style={
-                        "border": "2px dashed #888",   # 枠線
-                        "height": "120px",             # セルの高さ
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
+                        "border": "2px solid #888",   # 枠線
+                        "height": "120px",            # セルの高さ
+                        "width": "80px",              # セルの幅
                         "backgroundColor": "#f9f9f9"
                     }
                 )
