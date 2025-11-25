@@ -3,6 +3,10 @@ from streamlit_sortables import sort_items
 
 st.title("神経衰弱記録（盤面を固定サイズに）")
 
+# --- 初期化 ---
+if "board" not in st.session_state:
+    st.session_state.board = [f"1-{i+1}" for i in range(6)]  # 初期盤面は全部1
+
 # ユーザが種類ごとの枚数を選ぶ
 card_defs = {}
 for kind in ["1","2","3","4","5","6","7","8","9","10"]:
@@ -14,37 +18,25 @@ for kind, count in card_defs.items():
     for i in range(count):
         hand_items.append(f"{kind}-{i+1}")
 
-# 初期盤面（全部1で6マス）
-board_items = [f"1-{i+1}" for i in range(6)]
-
-# コンテナを渡す
+# コンテナを渡す（盤面は常に session_state.board を使う）
 containers = [
     {"name": "手札", "items": hand_items},
-    {"name": "盤面", "items": board_items}
+    {"name": "盤面", "items": st.session_state.board}
 ]
 
+# 並べ替え UI
 sorted_containers = sort_items(containers, multi_containers=True)
 
-# --- 返り値の形に合わせて安全に取り出す ---
-def get_items(result, name):
-    if isinstance(result, list):  # list[dict] の場合
-        for c in result:
-            if isinstance(c, dict) and c.get("name") == name:
-                return c.get("items", [])
-    elif isinstance(result, dict):  # dict[str, list] の場合
-        return result.get(name, [])
-    return []
+# --- 返り値から盤面を更新 ---
+for c in sorted_containers:
+    if c.get("name") == "盤面":
+        new_board = c.get("items", [])
+        # 常に6マスに補正
+        st.session_state.board = (new_board + ["空"]*6)[:6]
 
-board = get_items(sorted_containers, "盤面")
-
-# --- 常に6マスに調整 ---
-fixed_board = board[:6]
-while len(fixed_board) < 6:
-    fixed_board.append("空")
-
-# 盤面を描画（2×3）
+# --- 盤面を描画（2×3） ---
 cols_per_row = 3
-rows = [fixed_board[i:i+cols_per_row] for i in range(0, len(fixed_board), cols_per_row)]
+rows = [st.session_state.board[i:i+cols_per_row] for i in range(0, 6, cols_per_row)]
 
 st.subheader("盤面表示 2×3")
 for row in rows:
