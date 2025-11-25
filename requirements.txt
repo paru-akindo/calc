@@ -1,2 +1,2 @@
 streamlit
-streamlit-elements==0.1.0
+streamlit-sortables==0.3.1
