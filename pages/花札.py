@@ -14,16 +14,19 @@ for kind, count in card_defs.items():
     for i in range(count):
         hand_items.append(f"{kind}-{i+1}")
 
+# 盤面を固定サイズでダミー枠を用意（例: 2×3 = 6マス）
+board_items = [f"空-{i+1}" for i in range(6)]
+
 # コンテナをリスト形式で渡す
 containers = [
     {"name": "手札", "items": hand_items},
-    {"name": "盤面", "items": []}
+    {"name": "盤面", "items": board_items}
 ]
 
 # 並べ替え
 sorted_cards = sort_items(containers, multi_containers=True)
 
-# 盤面を取り出す（リストを走査）
+# 盤面を取り出す
 board = []
 for c in sorted_cards:
     if c["name"] == "盤面":
@@ -36,5 +39,8 @@ rows = [board[i:i+cols_per_row] for i in range(0, len(board), cols_per_row)]
 for row in rows:
     cols = st.columns(len(row))
     for col, card in zip(cols, row):
-        kind = card.split("-")[0]
-        col.image(f"https://raw.githubusercontent.com/paru-akindo/calc/master/image/{kind}.png", width=80)
+        if card.startswith("空"):
+            col.write("空")
+        else:
+            kind = card.split("-")[0]
+            col.image(f"https://raw.githubusercontent.com/paru-akindo/calc/master/image/{kind}.png", width=80)
