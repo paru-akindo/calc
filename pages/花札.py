@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_sortables import sort_items
 
-st.title("神経衰弱記録（手札と盤面を別領域に）")
+st.title("神経衰弱記録（手札と盤面を別枠に）")
 
 # ユーザが種類ごとの枚数を選ぶ
 card_defs = {}
@@ -23,7 +23,7 @@ containers = [
     {"name": "盤面", "items": board_items}
 ]
 
-# 並べ替え（手札と盤面が別領域として表示される）
+# 並べ替え（手札と盤面が別枠として表示される）
 sorted_cards = sort_items(containers, multi_containers=True)
 
 # 盤面を取り出す
