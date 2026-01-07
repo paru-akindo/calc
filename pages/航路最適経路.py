@@ -1,4 +1,4 @@
-# main.py
+# main_routes_only.py
 import streamlit as st
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
@@ -9,7 +9,7 @@ from io import StringIO
 from copy import deepcopy
 from math import prod
 
-st.set_page_config(page_title="航路買い物（統合版・重み付け平均）", layout="wide")
+st.set_page_config(page_title="ルート解析（簡易表示）", layout="wide")
 
 # --------------------
 # 設定: ITEMS はスプレッドシートの品目列ヘッダと一致させること
@@ -31,7 +31,7 @@ CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?forma
 SPREADSHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid={GID}"
 
 # --------------------
-# ヘルパー: 厳格整数テキスト入力（空欄許容）
+# ヘルパー: 厳格整数テキスト入力（再利用のため残すが UI では使わない）
 # --------------------
 def numeric_input_optional_strict(label: str, key: str, placeholder: str = "", allow_commas: bool = True, min_value: Optional[int] = None, max_value: Optional[int] = None):
     invalid_flag = f"{key}_invalid"
@@ -74,8 +74,6 @@ def numeric_input_optional_strict(label: str, key: str, placeholder: str = "", a
 
 # --------------------
 # CSV 取得: 行=港 or 行=品目 を自動判定して price_matrix を作る
-# price_matrix: { item_name: { port_name: price_int, ... }, ... }
-# returns ports(list), price_matrix(dict)
 # --------------------
 @st.cache_data(ttl=60)
 def fetch_price_matrix_from_csv_auto(url: str):
@@ -130,7 +128,7 @@ def fetch_price_matrix_from_csv_auto(url: str):
         return ports, price_matrix
 
 # --------------------
-# greedy general (既存)
+# 既存の解析ロジック（そのまま利用）
 # --------------------
 def greedy_plan_for_destination_general(current_port: str, dest_port: str, cash: int, stock: Optional[Dict[str,int]], price_matrix: Dict[str,Dict[str,int]]):
     cash = int(cash) if cash is not None else 0
@@ -166,9 +164,6 @@ def greedy_plan_for_destination_general(current_port: str, dest_port: str, cash:
     remaining_cash_after_sell = cash + total_profit
     return plan, int(total_cost), int(total_profit), int(remaining_cash_after_sell)
 
-# --------------------
-# lookahead 評価関数（既存）
-# --------------------
 def evaluate_with_lookahead(current_port: str, dest_port: str, cash: int, stock: Dict[str,int], price_matrix: Dict[str,Dict[str,int]], second_k: Optional[int] = None):
     first_plan, first_cost, first_profit, cash_after_sell = greedy_plan_for_destination_general(current_port, dest_port, cash, stock, price_matrix)
 
@@ -212,9 +207,6 @@ def evaluate_with_lookahead(current_port: str, dest_port: str, cash: int, stock:
         "cash_after_first_sell": int(cash_after_sell)
     }
 
-# --------------------
-# 単一品目近似関数群（自動解析用）
-# --------------------
 def greedy_one_item_for_destination(current_port: str, dest_port: str, cash: int, price_matrix: Dict[str,Dict[str,int]]):
     cash = int(max(1, cash))
     best_item = None
@@ -267,11 +259,16 @@ def compute_single_step_multipliers_oneitem(price_matrix: Dict[str,Dict[str,int]
     candidates.sort(key=lambda x: x[2], reverse=True)
     return mapping, candidates
 
-def build_greedy_cycles_from_start(start_port: str, mapping: Dict, cash: int, allowed_ports: Optional[set] = None):
+def build_greedy_cycles_from_start(start_port: str, mapping: Dict, cash: int, allowed_ports: Optional[set] = None, max_iters: int = 2000, max_route_len: int = 200):
     route_nodes = [start_port]
     steps = []
+    iters = 0
 
     while True:
+        iters += 1
+        if iters > max_iters:
+            break
+
         cur = route_nodes[-1]
         next_candidates_all = mapping.get(cur, {})
         if allowed_ports is not None:
@@ -313,7 +310,7 @@ def build_greedy_cycles_from_start(start_port: str, mapping: Dict, cash: int, al
             final_cash = int(last_step_cash) if last_step_cash is not None else None
             return route, cycle_steps, final_cash, avg_mul, total_mul
 
-        if len(route_nodes) > max(1, len(mapping) + 5):
+        if len(route_nodes) > max(1, len(mapping) + 5) or len(route_nodes) > max_route_len:
             break
 
     return None, None, None, None, None
@@ -366,16 +363,15 @@ def generate_routes_greedy_cover_with_recalc(ports: List[str], price_matrix: Dic
                 break
 
             current_start = next_start
-            # DO NOT auto-remove current_start; only remove ports when they are covered
 
         results_per_start.append({'initial_start': initial_start_choice, 'routes': routes, 'remaining_ports': remaining_ports})
 
     return results_per_start
 
 # --------------------
-# UI (手動検索パートを保持)
+# メイン: CSV取得と「各港から一手で最適な行き先」「ルート解析」表示のみ
 # --------------------
-st.title("何買おうかな（手動検索）")
+st.markdown("# 各港から一手で最適な行き先 と ルート解析")
 st.markdown(f'<div style="margin-top:6px;"><a href="{SPREADSHEET_URL}" target="_blank" rel="noopener noreferrer">スプレッドシートを開く（編集・表示）</a></div>', unsafe_allow_html=True)
 
 # 価格取得
@@ -385,212 +381,13 @@ except Exception as e:
     st.error(f"スプレッドシート（CSV）からの読み込みに失敗しました: {e}")
     st.stop()
 
-# --------------------
-# 復活: 単一遷移プレビュー（ページ上部に表示）
-# --------------------
+# 単一遷移プレビュー（内部計算）
 CASH_DEFAULT = 50000
 mapping_preview, candidates_preview = compute_single_step_multipliers_oneitem(price_matrix, ports, ports, CASH_DEFAULT)
 
-# レイアウト（既存の UI を維持）
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    current_port = st.selectbox("現在港", ports, index=0)
-    cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
-
-    # お買い得上位5（現在港基準）
-    item_scores = []
-    for name, base in ITEMS:
-        buy = price_matrix.get(name, {}).get(current_port, 0)
-        try:
-            ratio = buy / float(base) if base != 0 and buy > 0 else float("inf")
-        except Exception:
-            ratio = float("inf")
-        item_scores.append((name, buy, base, ratio))
-    item_scores.sort(key=lambda t: (t[3], t[1]))
-    top5 = item_scores[:5]
-
-    st.write("在庫入力（必須：Top5品目）")
-    stock_inputs = {}
-    for row_start in range(0, len(top5), 2):
-        c_left, c_right = st.columns(2)
-        name, buy, base, ratio = top5[row_start]
-        pct = int(round((buy - base) / base * 100)) if base != 0 and buy>0 else 0
-        label = f"{name}（価格: {buy}, 補正: {pct:+d}%）"
-        with c_left:
-            stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}", placeholder="在庫数", allow_commas=True, min_value=0)
-        if row_start + 1 < len(top5):
-            name2, buy2, base2, ratio2 = top5[row_start+1]
-            pct2 = int(round((buy2 - base2) / base2 * 100)) if base2 != 0 and buy2>0 else 0
-            label2 = f"{name2}（価格: {buy2}, 補正: {pct2:+d}%）"
-            with c_right:
-                stock_inputs[name2] = numeric_input_optional_strict(label2, key=f"stk_{name2}", placeholder="在庫数", allow_commas=True, min_value=0)
-
-    top_k = st.slider("表示上位何港を出すか（上位k）", min_value=1, max_value=min(10, len(ports)-1), value=3)
-    lookahead_mode = st.checkbox("1手先モード（到着先の先を想定）", value=False)
-    second_k = None
-    if lookahead_mode:
-        second_k = st.number_input("二手目候補を上位何港だけ評価するか（1〜 全探索）", min_value=1, max_value=max(1, len(ports)-1), value=min(5, max(1, len(ports)-1)))
-
-    if st.button("検索"):
-        if cash is None:
-            st.error("所持金を入力してください（空欄不可）。")
-        else:
-            invalid_found = False
-            for name in stock_inputs.keys():
-                if st.session_state.get(f"stk_{name}_invalid", False):
-                    st.error(f"{name} の入力が不正です。半角整数で入力してください。")
-                    invalid_found = True
-                if stock_inputs.get(name) is None:
-                    st.error(f"{name} の在庫を必ず入力してください（空欄不可）。")
-                    invalid_found = True
-            if invalid_found:
-                st.error("不正入力があるため中止します。")
-            else:
-                current_stock = {n: 0 for n, _ in ITEMS}
-                for name in stock_inputs:
-                    val = stock_inputs.get(name)
-                    current_stock[name] = int(val) if val is not None else 0
-
-                results = []
-                with st.spinner("候補評価中..."):
-                    for dest in ports:
-                        if dest == current_port:
-                            continue
-                        if lookahead_mode:
-                            eval_res = evaluate_with_lookahead(current_port, dest, cash, current_stock, price_matrix, second_k=second_k)
-                            results.append((dest, eval_res["total_profit"], eval_res))
-                        else:
-                            plan, cost, profit, _ = greedy_plan_for_destination_general(current_port, dest, cash, current_stock, price_matrix)
-                            results.append((dest, profit, {"first_plan": plan, "first_profit": profit}))
-
-                results.sort(key=lambda x: x[1], reverse=True)
-                top_results = results[:top_k]
-
-                if not top_results or all(r[1] <= 0 for r in top_results):
-                    st.info("所持金・在庫の範囲で利益が見込める到着先が見つかりませんでした。")
-                else:
-                    for rank, (dest, total_profit, meta) in enumerate(top_results, start=1):
-                        if lookahead_mode:
-                            first_profit = meta["first_profit"]
-                            second_profit = meta["second_best_profit"]
-                            second_dest = meta["second_dest"]
-                            cash_after_first = meta.get("cash_after_first_sell", None)
-                            st.markdown(
-                                f'''
-                                <style>
-                                  .dest-row {{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; padding:6px 8px; border-radius:6px; }}
-                                  @media (prefers-color-scheme: light) {{
-                                    .dest-row .label {{ color:#444; }}
-                                    .dest-row .value {{ color:#111; }}
-                                    .dest-row .sep {{ color:#ccc; }}
-                                  }}
-                                  @media (prefers-color-scheme: dark) {{
-                                    .dest-row .label {{ color:#cfcfcf; }}
-                                    .dest-row .value {{ color:#fff; }}
-                                    .dest-row .sep {{ color:#666; }}
-                                  }}
-                                  .dest-row .label, .dest-row .value {{ -webkit-text-fill-color: initial !important; }}
-                                </style>
-                                <div class="dest-row">
-                                  <span class="label" style="font-size:0.85em; margin-right:4px;">到着先</span>
-                                  <span class="value" style="font-size:1.15em; font-weight:700;">{dest}</span>
-                                  <span class="sep" style="margin:0 8px;">|</span>
-                                  <span class="label" style="font-size:0.85em; margin-right:4px;">合計想定利益</span>
-                                  <span class="value" style="font-size:1.15em; font-weight:700; color:#0b6;">{total_profit:,}</span>
-                                </div>
-                                ''',
-                                unsafe_allow_html=True
-                            )
-                            st.markdown(f"- 一手目利益: {first_profit:,}  （到着後手元資産: {cash_after_first:,}）")
-                            if second_dest:
-                                st.markdown(f"- 二手目売却先候補: **{second_dest}**  想定利益: {second_profit:,}")
-                            else:
-                                st.markdown(f"- 二手目売却先候補なし（想定利益: 0）")
-
-                            if meta.get("first_plan"):
-                                df1 = pd.DataFrame([{"品目":i,"購入数":q,"想定利益":int(q*u)} for i,q,b,s,u in meta["first_plan"]])
-                                totals1 = {"品目":"合計","購入数":int(df1["購入数"].sum()) if not df1.empty else 0,"想定利益":int(df1["想定利益"].sum()) if not df1.empty else 0}
-                                df1_disp = pd.concat([df1, pd.DataFrame([totals1])], ignore_index=True)
-                                st.write("一手目プラン（現在港→到着先）")
-                                try:
-                                    st.dataframe(df1_disp.style.format({"購入数":"{:,.0f}","想定利益":"{:,.0f}"}, na_rep=""), height= max(140, 40*(len(df1_disp)+1)))
-                                except Exception:
-                                    st.table(df1_disp)
-
-                            if meta.get("second_plan"):
-                                df2 = pd.DataFrame([{"品目":i,"購入数":q,"想定利益":int(q*u)} for i,q,b,s,u in meta["second_plan"]])
-                                totals2 = {"品目":"合計","購入数":int(df2["購入数"].sum()) if not df2.empty else 0,"想定利益":int(df2["想定利益"].sum()) if not df2.empty else 0}
-                                df2_disp = pd.concat([df2, pd.DataFrame([totals2])], ignore_index=True)
-                                st.write(f"二手目プラン（到着先→売却先: {meta['second_dest']}）")
-                                try:
-                                    st.dataframe(df2_disp.style.format({"購入数":"{:,.0f}","想定利益":"{:,.0f}"}, na_rep=""), height= max(140, 40*(len(df2_disp)+1)))
-                                except Exception:
-                                    st.table(df2_disp)
-                            st.write("---")
-                        else:
-                            plan = meta["first_plan"]
-                            profit = meta["first_profit"]
-                            st.markdown(
-                                f'''
-                                <style>
-                                  .dest-row {{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; padding:6px 8px; border-radius:6px; }}
-                                  @media (prefers-color-scheme: light) {{
-                                    .dest-row {{ background: rgba(255,255,255,0.0); }}
-                                    .dest-row .label {{ color:#444; }}
-                                    .dest-row .value {{ color:#111; }}
-                                    .dest-row .sep {{ color:#ccc; }}
-                                  }}
-                                  @media (prefers-color-scheme: dark) {{
-                                    .dest-row {{ background: rgba(0,0,0,0.0); }}
-                                    .dest-row .label {{ color:#cfcfcf; }}
-                                    .dest-row .value {{ color:#ffffff; }}
-                                    .dest-row .sep {{ color:#666; }}
-                                  }}
-                                  .dest-row .label, .dest-row .value, .dest-row .sep {{ -webkit-text-fill-color: initial !important; }}
-                                </style>
-
-                                <div class="dest-row">
-                                  <span class="label" style="font-size:0.85em; margin-right:4px;">到着先</span>
-                                  <span class="value" style="font-size:1.15em; font-weight:700;">{dest}</span>
-                                  <span class="sep" style="margin:0 8px;">|</span>
-                                  <span class="label" style="font-size:0.85em; margin-right:4px;">想定利益</span>
-                                  <span class="value" style="font-size:1.15em; font-weight:700;">{profit:,}</span>
-                                </div>
-                                ''',
-                                unsafe_allow_html=True
-                            )
-                            if not plan:
-                                st.write("購入候補がありません（利益が出ない、もしくは在庫不足）。")
-                                continue
-                            df_out = pd.DataFrame([{
-                                "品目": item,
-                                "購入数": qty,
-                                "想定利益": int(qty * unit_profit)
-                            } for item, qty, buy, sell, unit_profit in plan])
-                            totals = {"品目":"合計","購入数":int(df_out["購入数"].sum()),"想定利益":int(df_out["想定利益"].sum())}
-                            df_disp = pd.concat([df_out, pd.DataFrame([totals])], ignore_index=True)
-                            try:
-                                st.dataframe(df_disp.style.format({"購入数":"{:,.0f}","想定利益":"{:,.0f}"}, na_rep=""), height= max(140, 40*(len(df_disp)+1)))
-                            except Exception:
-                                st.table(df_disp)
-
-with col3:
-    if st.checkbox("価格表を表示"):
-        rows = []
-        for name, _ in ITEMS:
-            row = {"品目": name}
-            for p in ports:
-                row[p] = price_matrix[name].get(p, 0)
-            rows.append(row)
-        df_all = pd.DataFrame(rows).set_index("品目")
-        st.dataframe(df_all, height=600)
-
 # --------------------
-# 自動解析（上位kから検討）: 要求に基づくロジックを実装
-# overall_avg を「ルートの移動回数で重み付けた平均」に変更
-# AUTO_TOP_K を固定で5
+# 表示: 各港から一手で最適な行き先
 # --------------------
-st.markdown("---")
 st.subheader("各港から一手で最適な行き先（乗数・買う物）")
 rows = []
 for p in ports:
@@ -605,16 +402,18 @@ for p in ports:
 
 df_preview = pd.DataFrame(rows)
 st.dataframe(df_preview, height=320)
+
+# --------------------
+# ルート解析（自動解析）
+# --------------------
 st.markdown("---")
-st.subheader("ルート解析")
+st.subheader("ルート解析（自動）")
 
 AUTO_TOP_K = 5
 CASH_DEFAULT = 50000
 
-# 単一遷移プレビュー（内部計算） -- already computed above but recompute to be safe
+# 単一遷移の候補を並べて開始候補順を作る
 mapping_preview, candidates_preview = compute_single_step_multipliers_oneitem(price_matrix, ports, ports, CASH_DEFAULT)
-
-# start_order を単一遷移の評価で作る（出発港順）
 singles_sorted = sorted(candidates_preview, key=lambda x: x[2], reverse=True)
 start_ports_order = []
 for p, q, m in singles_sorted:
@@ -627,74 +426,22 @@ with st.spinner("自動解析（複数開始候補）実行中..."):
     all_results = generate_routes_greedy_cover_with_recalc(ports, price_matrix, CASH_DEFAULT, top_k_start=len(start_ports_try))
     kept_results = [r for r in all_results if r['initial_start'] in start_ports_try]
 
-    # For each start, compute metrics:
-    # - overall_avg: weighted by number of moves in each route (weight = number of steps)
-    # - max_route_avg: max route['avg_mul']
-    start_metrics = []
-    for res in kept_results:
-        routes = res.get('routes', [])
-        if not routes:
-            overall_avg = 0.0
-            max_route_avg = 0.0
-        else:
-            weighted_sum = 0.0
-            total_moves = 0
-            avg_list = []
-            for rt in routes:
-                avg_mul = rt.get('avg_mul', 0.0)
-                route_nodes = rt.get('route', [])
-                moves = max(0, len(route_nodes) - 1)
-                if moves > 0:
-                    weighted_sum += avg_mul * moves
-                    total_moves += moves
-                avg_list.append(avg_mul)
-            overall_avg = float(weighted_sum / total_moves) if total_moves > 0 else 0.0
-            max_route_avg = float(np.max(avg_list)) if avg_list else 0.0
-        start_metrics.append({
-            'start': res['initial_start'],
-            'overall_avg': overall_avg,
-            'max_route_avg': max_route_avg,
-            'result': res
-        })
-
-    start_best_overall = max(start_metrics, key=lambda x: x['overall_avg']) if start_metrics else None
-    start_best_single_route = max(start_metrics, key=lambda x: x['max_route_avg']) if start_metrics else None
-
-    rep = start_best_overall
-    other = start_best_single_route
-
-# Display representative result only
-if not start_metrics:
-    st.info("自動解析で開始候補が見つかりませんでした。")
-else:
-    res = rep['result']
+# 集計と表示
+for res in kept_results:
+    start = res['initial_start']
+    st.markdown(f"### 開始港: {start}")
     routes = res.get('routes', [])
-
     if not routes:
-        st.write("代表開始候補から有効なルートは見つかりませんでした。")
-    else:
-        for i, r in enumerate(routes, start=1):
-            st.markdown(f"### ルート {i}: {' → '.join(r['route'])}")
-            st.markdown(f"- カバー港数: {len(r['covered'])}  平均乗数/移動: {r['avg_mul']:.2f}  総乗数: {r['total_mul']:.2f}")
-            with st.expander("ステップ詳細"):
-                for sidx, s in enumerate(r['steps'], start=1):
-                    bought = f"{s.get('chosen_item')}" if s.get('chosen_item') else "-"
-                    st.write(f"{sidx}. {s['from']} → {s['to']} : 購入 {bought} , 乗数 {s['multiplier']:.2f}")
+        st.write("解析結果なし")
+        continue
 
-    # If another start has a strictly higher single-route avg, note it and show its best route as comparison
-    if other and other['start'] != rep['start'] and other['max_route_avg'] > rep['overall_avg']:
-        st.markdown("---")
-        st.subheader(f"比較注記: 別の開始候補 {other['start']} が単一ルートでより高い平均乗数/移動を出しました")
-        st.markdown(f"- {other['start']} の単一ルート最大: **{other['max_route_avg']:.2f}**, 代表の全体重み付け平均: **{rep['overall_avg']:.2f}**")
-        other_res = other['result']
-        candidate_routes = other_res.get('routes', [])
-        if candidate_routes:
-            best_route = max(candidate_routes, key=lambda rr: rr.get('avg_mul', 0.0))
-            st.markdown(f"### {other['start']} の最高ルート: {' → '.join(best_route['route'])}")
-            st.markdown(f"- カバー港数: {len(best_route['covered'])}  平均乗数/移動: {best_route['avg_mul']:.2f}  総乗数: {best_route['total_mul']:.2f}")
-            with st.expander("ステップ詳細（比較用）"):
-                for sidx, s in enumerate(best_route['steps'], start=1):
-                    bought = f"{s.get('chosen_item')}" if s.get('chosen_item') else "-"
-                    st.write(f"{sidx}. {s['from']} → {s['to']} : 購入 {bought} , 乗数 {s['multiplier']:.2f}")
+    # ルートごとに表示
+    for idx, route_info in enumerate(routes, start=1):
+        route = route_info.get('route', [])
+        avg_mul = route_info.get('avg_mul', 0.0)
+        total_mul = route_info.get('total_mul', 0.0)
+        st.markdown(f"- ルート {idx}: {' → '.join(route)}")
+        st.markdown(f"  - 平均乗数（ルート内）: {avg_mul:.3f}  合計乗数: {total_mul:.3f}")
+    st.write("---")
 
-st.success("自動解析完了")
+st.markdown("※ 表示は一手最適化（単一品目近似）に基づく推定です。実際の運用では在庫・積載・時間等の制約を考慮してください。")
