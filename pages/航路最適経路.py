@@ -1,4 +1,4 @@
-# main_routes_only.py
+# main_routes_rich_ui.py
 import streamlit as st
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
@@ -9,7 +9,7 @@ from io import StringIO
 from copy import deepcopy
 from math import prod
 
-st.set_page_config(page_title="ルート解析（簡易表示）", layout="wide")
+st.set_page_config(page_title="ルート解析（リッチ表示復元）", layout="wide")
 
 # --------------------
 # 設定: ITEMS はスプレッドシートの品目列ヘッダと一致させること
@@ -369,9 +369,9 @@ def generate_routes_greedy_cover_with_recalc(ports: List[str], price_matrix: Dic
     return results_per_start
 
 # --------------------
-# メイン: CSV取得と「各港から一手で最適な行き先」「ルート解析」表示のみ
+# メイン: CSV取得と「各港から一手で最適な行き先」「ルート解析」表示（リッチ表示復元）
 # --------------------
-st.markdown("# 各港から一手で最適な行き先 と ルート解析")
+st.markdown("# 各港から一手で最適な行き先 と ルート解析（リッチ表示）")
 st.markdown(f'<div style="margin-top:6px;"><a href="{SPREADSHEET_URL}" target="_blank" rel="noopener noreferrer">スプレッドシートを開く（編集・表示）</a></div>', unsafe_allow_html=True)
 
 # 価格取得
@@ -386,7 +386,7 @@ CASH_DEFAULT = 50000
 mapping_preview, candidates_preview = compute_single_step_multipliers_oneitem(price_matrix, ports, ports, CASH_DEFAULT)
 
 # --------------------
-# 表示: 各港から一手で最適な行き先
+# 表示: 各港から一手で最適な行き先（リッチ表示）
 # --------------------
 st.subheader("各港から一手で最適な行き先（乗数・買う物）")
 rows = []
@@ -404,7 +404,7 @@ df_preview = pd.DataFrame(rows)
 st.dataframe(df_preview, height=320)
 
 # --------------------
-# ルート解析（自動解析）
+# ルート解析（自動解析） — 元スクリプトのリッチ表示を復元
 # --------------------
 st.markdown("---")
 st.subheader("ルート解析（自動）")
@@ -426,22 +426,80 @@ with st.spinner("自動解析（複数開始候補）実行中..."):
     all_results = generate_routes_greedy_cover_with_recalc(ports, price_matrix, CASH_DEFAULT, top_k_start=len(start_ports_try))
     kept_results = [r for r in all_results if r['initial_start'] in start_ports_try]
 
-# 集計と表示
+# 集計とリッチ表示（元の見た目に近づける）
 for res in kept_results:
     start = res['initial_start']
-    st.markdown(f"### 開始港: {start}")
+    st.markdown(
+        f'''
+        <style>
+          .start-block {{ display:block; padding:8px 10px; border-radius:8px; margin-bottom:8px; }}
+          @media (prefers-color-scheme: light) {{
+            .start-block {{ background: rgba(250,250,250,0.6); color:#111; }}
+          }}
+          @media (prefers-color-scheme: dark) {{
+            .start-block {{ background: rgba(20,20,20,0.6); color:#fff; }}
+          }}
+          .start-block .label {{ font-size:0.9em; color: #666; margin-right:6px; }}
+          .start-block .value {{ font-size:1.05em; font-weight:700; }}
+        </style>
+        <div class="start-block">
+          <span class="label">開始港</span>
+          <span class="value">{start}</span>
+        </div>
+        ''',
+        unsafe_allow_html=True
+    )
+
     routes = res.get('routes', [])
     if not routes:
         st.write("解析結果なし")
+        st.write("---")
         continue
 
-    # ルートごとに表示
     for idx, route_info in enumerate(routes, start=1):
         route = route_info.get('route', [])
         avg_mul = route_info.get('avg_mul', 0.0)
         total_mul = route_info.get('total_mul', 0.0)
-        st.markdown(f"- ルート {idx}: {' → '.join(route)}")
-        st.markdown(f"  - 平均乗数（ルート内）: {avg_mul:.3f}  合計乗数: {total_mul:.3f}")
-    st.write("---")
+        covered = route_info.get('covered', set())
+
+        # リッチな見出しブロック（元スクリプト風）
+        st.markdown(
+            f'''
+            <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; padding:6px 8px; border-radius:6px;">
+              <span style="font-size:0.95em; color:#888;">ルート</span>
+              <span style="font-size:1.05em; font-weight:700;">{idx}</span>
+              <span style="margin:0 8px; color:#ccc;">|</span>
+              <span style="font-size:0.95em; color:#888;">経路</span>
+              <span style="font-size:1.05em; font-weight:700;">{' → '.join(route)}</span>
+              <span style="margin:0 8px; color:#ccc;">|</span>
+              <span style="font-size:0.95em; color:#888;">平均乗数</span>
+              <span style="font-size:1.05em; font-weight:700; color:#0b6;">{avg_mul:.3f}</span>
+              <span style="margin:0 8px; color:#ccc;">|</span>
+              <span style="font-size:0.95em; color:#888;">合計乗数</span>
+              <span style="font-size:1.05em; font-weight:700;">{total_mul:.3f}</span>
+            </div>
+            ''',
+            unsafe_allow_html=True
+        )
+
+        # ルート内のステップをテーブル表示（元スクリプトの詳細表示に近づける）
+        steps = route_info.get('steps', [])
+        if steps:
+            df_steps = pd.DataFrame([{
+                "出発": s.get('from'),
+                "到着": s.get('to'),
+                "買う物（推定）": s.get('chosen_item') or "-",
+                "乗数": f"{s.get('multiplier', 1.0):.3f}"
+            } for s in steps])
+            totals = {"出発":"合計", "到着":"", "買う物（推定）":"", "乗数": f"{len(steps)} step(s)"}
+            df_disp = pd.concat([df_steps, pd.DataFrame([totals])], ignore_index=True)
+            try:
+                st.dataframe(df_disp.style.format({"乗数":"{:.3f}"}, na_rep=""), height=max(140, 40*(len(df_disp)+1)))
+            except Exception:
+                st.table(df_disp)
+        else:
+            st.write("ルート内のステップ情報なし")
+
+        st.write("---")
 
 st.markdown("※ 表示は一手最適化（単一品目近似）に基づく推定です。実際の運用では在庫・積載・時間等の制約を考慮してください。")
