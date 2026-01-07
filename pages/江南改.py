@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-st.title("いつ段位アップ？（最小速度を初期表示）")
+st.title("いつ段位アップ？")
 
 # ── 昇段に必要な修練値 ──
 required_training = {
