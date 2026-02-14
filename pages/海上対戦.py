@@ -21,6 +21,9 @@ guild_names = [f.split("/")[-1].replace(".csv", "") for f in guild_files]
 selected_guild = st.selectbox("商会を選択", guild_names)
 df = pd.read_csv(f"data/{selected_guild}.csv")
 
+# --- 戦略モード選択 ---
+mode = st.radio("戦略モード", ["攻め", "守り", "バランス"], horizontal=True)
+
 st.subheader("今回出てきた敵を入力")
 
 # --- 横並びで敵入力 ---
@@ -50,7 +53,15 @@ def calc_score(name, attr):
     row = df[df["商会員名"] == name].iloc[0]
     attr_power = row[attr]
     total_power = row[["士", "農", "工", "商", "侠"]].sum()
-    score = attr_power + total_power * 0.3
+
+    # --- モード別スコア ---
+    if mode == "攻め（自分が強い）":
+        score = attr_power * 1.5 + total_power * 0.2
+    elif mode == "守り（自分が弱い）":
+        score = attr_power * 0.8 + total_power * 0.5
+    else:  # バランス
+        score = attr_power * 1.2 + total_power * 0.3
+
     return attr_power, total_power, score
 
 # --- 色付け関数（matplotlib 不要） ---
@@ -64,7 +75,7 @@ def color_score(val):
     return f"background-color: rgb({r},{g},{b}); color: white;"
 
 # --- 判定ボタン ---
-if st.button("どれを倒す？"):
+if st.button("どれがおすすめ？"):
     candidates = []
     for name, attr in [enemy1, enemy2, enemy3]:
         attr_power, total_power, score = calc_score(name, attr)
@@ -77,8 +88,8 @@ if st.button("どれを倒す？"):
         })
 
     df_show = pd.DataFrame(candidates)
-    
-    # --- CSS ベースの色付け ---
+
+    # --- CSS ベースの色付け＋整数表示 ---
     styled = (
         df_show.style
         .applymap(color_score, subset=["スコア"])
