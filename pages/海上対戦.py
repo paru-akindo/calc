@@ -4,7 +4,7 @@ import glob
 
 st.title("南海対戦")
 
-# --- CSS（スマホ対応：名前欄を細く固定） ---
+# --- CSS（スマホ対応） ---
 st.markdown("""
 <style>
 .small-selectbox > div > div {
@@ -21,8 +21,12 @@ guild_names = [f.split("/")[-1].replace(".csv", "") for f in guild_files]
 selected_guild = st.selectbox("商会を選択", guild_names)
 df = pd.read_csv(f"data/{selected_guild}.csv")
 
+# 数値列を強制的に float 化（安全）
+for col in ["士", "農", "工", "商", "侠"]:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
 # --- 戦略モード選択 ---
-mode = st.radio("戦略モード", ["攻め", "守り", "バランス"], horizontal=True)
+mode = st.radio("戦略モード", ["攻め", "バランス", "守り"], horizontal=True)
 
 st.subheader("今回出てきた敵を入力")
 
@@ -51,20 +55,31 @@ enemy3 = enemy_input("敵3")
 # --- スコア計算 ---
 def calc_score(name, attr):
     row = df[df["商会員名"] == name].iloc[0]
+
+    # 属性強さ
     attr_power = row[attr]
+
+    # 総合強さ
     total_power = row[["士", "農", "工", "商", "侠"]].sum()
+
+    # 穴度（今回の属性で計算）
+    hole = total_power / (attr_power + 1e-9)
 
     # --- モード別スコア ---
     if mode == "攻め（自分が強い）":
-        score = attr_power * 1.5 + total_power * 0.2
-    elif mode == "守り（自分が弱い）":
-        score = attr_power * 0.8 + total_power * 0.5
-    else:  # バランス
-        score = attr_power * 1.2 + total_power * 0.3
+        alpha = 0.5
+        score = attr_power / (hole ** alpha)
 
-    return attr_power, total_power, score
+    elif mode == "バランス":
+        alpha = 0.3
+        score = attr_power / (hole ** alpha)
 
-# --- 色付け関数（matplotlib 不要） ---
+    else:  # 守り（自分が弱い）
+        score = attr_power  # 属性だけ見て一番弱いのを狙う
+
+    return attr_power, total_power, hole, score
+
+# --- 色付け関数 ---
 def color_score(val):
     min_v = df_show["スコア"].min()
     max_v = df_show["スコア"].max()
@@ -75,34 +90,34 @@ def color_score(val):
     return f"background-color: rgb({r},{g},{b}); color: white;"
 
 # --- 判定ボタン ---
-if st.button("どれがおすすめ？"):
+if st.button("どれを倒すべき？"):
     candidates = []
     for name, attr in [enemy1, enemy2, enemy3]:
-        attr_power, total_power, score = calc_score(name, attr)
+        attr_power, total_power, hole, score = calc_score(name, attr)
         candidates.append({
             "商会員名": name,
             "属性": attr,
             "属性強さ": attr_power,
             "総合強さ": total_power,
+            "穴度": hole,
             "スコア": score
         })
 
     df_show = pd.DataFrame(candidates)
 
-    # --- CSS ベースの色付け＋整数表示 ---
     styled = (
         df_show.style
         .applymap(color_score, subset=["スコア"])
         .format({
             "属性強さ": "{:.0f}",
             "総合強さ": "{:.0f}",
-            "スコア": "{:.0f}"
+            "穴度": "{:.2f}",
+            "スコア": "{:.2f}"
         })
     )
 
     st.subheader("候補の比較")
     st.dataframe(styled, use_container_width=True)
 
-    # --- 最適な敵 ---
     best = min(candidates, key=lambda x: x["スコア"])
     st.success(f"倒すべき敵は **{best['商会員名']}（{best['属性']}）** です！")
