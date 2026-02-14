@@ -4,6 +4,15 @@ import glob
 
 st.title("商会バトル最適敵選択アプリ")
 
+# --- CSS（スマホ対応：名前欄を細く固定） ---
+st.markdown("""
+<style>
+.small-selectbox > div > div {
+    width: 150px !important;  /* ← 名前欄の幅を固定 */
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- 商会一覧を取得 ---
 guild_files = sorted(glob.glob("data/*.csv"))
 guild_names = [f.split("/")[-1].replace(".csv", "") for f in guild_files]
@@ -14,13 +23,23 @@ df = pd.read_csv(f"data/{selected_guild}.csv")
 
 st.subheader("今回出てきた敵を入力")
 
-# --- 横並びで敵入力 ---
+# --- 横並びで敵入力（スマホでも崩れにくい） ---
 def enemy_input(label):
-    col1, col2 = st.columns([2, 1])  # 左：名前、右：属性
+    col1, col2 = st.columns([1, 1])  # 均等にしておく
     with col1:
-        name = st.selectbox(f"{label}：商会員名", df["商会員名"], key=f"name_{label}")
+        name = st.selectbox(
+            f"{label}：商会員名",
+            df["商会員名"],
+            key=f"name_{label}"
+        )
+        # 名前欄に幅固定 CSS を適用
+        st.markdown('<div class="small-selectbox"></div>', unsafe_allow_html=True)
     with col2:
-        attr = st.selectbox(f"{label}：属性", ["士", "農", "工", "商", "侠"], key=f"attr_{label}")
+        attr = st.selectbox(
+            f"{label}：属性",
+            ["士", "農", "工", "商", "侠"],
+            key=f"attr_{label}"
+        )
     return name, attr
 
 enemy1 = enemy_input("敵1")
