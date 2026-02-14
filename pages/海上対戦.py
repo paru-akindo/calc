@@ -8,7 +8,7 @@ st.title("商会バトル最適敵選択アプリ")
 st.markdown("""
 <style>
 .small-selectbox > div > div {
-    width: 150px !important;  /* ← 名前欄の幅を固定 */
+    width: 150px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -23,16 +23,15 @@ df = pd.read_csv(f"data/{selected_guild}.csv")
 
 st.subheader("今回出てきた敵を入力")
 
-# --- 横並びで敵入力（スマホでも崩れにくい） ---
+# --- 横並びで敵入力 ---
 def enemy_input(label):
-    col1, col2 = st.columns([1, 1])  # 均等にしておく
+    col1, col2 = st.columns([1, 1])
     with col1:
         name = st.selectbox(
             f"{label}：商会員名",
             df["商会員名"],
             key=f"name_{label}"
         )
-        # 名前欄に幅固定 CSS を適用
         st.markdown('<div class="small-selectbox"></div>', unsafe_allow_html=True)
     with col2:
         attr = st.selectbox(
@@ -54,6 +53,16 @@ def calc_score(name, attr):
     score = attr_power + total_power * 0.3
     return attr_power, total_power, score
 
+# --- 色付け関数（matplotlib 不要） ---
+def color_score(val):
+    min_v = df_show["スコア"].min()
+    max_v = df_show["スコア"].max()
+    ratio = (val - min_v) / (max_v - min_v + 1e-9)
+    r = int(255 * ratio)
+    g = int(255 * (1 - ratio))
+    b = 100
+    return f"background-color: rgb({r},{g},{b}); color: white;"
+
 # --- 判定ボタン ---
 if st.button("どれを倒すべき？"):
     candidates = []
@@ -69,11 +78,8 @@ if st.button("どれを倒すべき？"):
 
     df_show = pd.DataFrame(candidates)
 
-    # --- スコアに色付け（低いほど緑、高いほど赤） ---
-    styled = df_show.style.background_gradient(
-        subset=["スコア"],
-        cmap="RdYlGn_r"
-    )
+    # --- CSS ベースの色付け ---
+    styled = df_show.style.applymap(color_score, subset=["スコア"])
 
     st.subheader("候補の比較")
     st.dataframe(styled, use_container_width=True)
