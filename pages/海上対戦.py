@@ -66,7 +66,7 @@ def calc_score(name, attr):
     hole = total_power / (attr_power + 1e-9)
 
     # --- モード別スコア ---
-    if mode == "攻め（自分が強い）":
+    if mode == "攻め":
         alpha = 0.5
         score = attr_power / (hole ** alpha)
 
