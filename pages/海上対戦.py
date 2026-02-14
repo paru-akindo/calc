@@ -26,7 +26,7 @@ for col in ["士", "農", "工", "商", "侠"]:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # --- 戦略モード選択 ---
-mode = st.radio("戦略モード", ["攻め", "バランス", "守り"], horizontal=True)
+mode = st.radio("戦略モード", ["バランス", "攻め", "守り"], horizontal=True)
 
 st.subheader("今回出てきた敵を入力")
 
