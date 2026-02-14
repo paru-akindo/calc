@@ -77,9 +77,17 @@ if st.button("どれを倒す？"):
         })
 
     df_show = pd.DataFrame(candidates)
-
+    
     # --- CSS ベースの色付け ---
-    styled = df_show.style.applymap(color_score, subset=["スコア"])
+    styled = (
+        df_show.style
+        .applymap(color_score, subset=["スコア"])
+        .format({
+            "属性強さ": "{:.0f}",
+            "総合強さ": "{:.0f}",
+            "スコア": "{:.0f}"
+        })
+    )
 
     st.subheader("候補の比較")
     st.dataframe(styled, use_container_width=True)
