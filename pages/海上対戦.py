@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import glob
 
-st.title("商会バトル最適敵選択アプリ")
+st.title("南海対戦")
 
 # --- CSS（スマホ対応：名前欄を細く固定） ---
 st.markdown("""
@@ -64,7 +64,7 @@ def color_score(val):
     return f"background-color: rgb({r},{g},{b}); color: white;"
 
 # --- 判定ボタン ---
-if st.button("どれを倒すべき？"):
+if st.button("どれを倒す？"):
     candidates = []
     for name, attr in [enemy1, enemy2, enemy3]:
         attr_power, total_power, score = calc_score(name, attr)
