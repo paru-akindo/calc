@@ -118,7 +118,8 @@ if st.session_state.last_result:
                     elif val and val.startswith("T_"):
                         color = val[2]
                         color_map = {"R":"#ef5350","G":"#66bb6a","B":"#42a5f5","Y":"#ffd54f"}
-                        svg.append(f'<rect x="{cx-8}" y="{cy-8}" width="16" height="16" fill="{color_map.get(color,\"#999\")}" />')
+                        # 修正: エスケープを避けるため外側をダブルクォート、属性内はシングルクォートで囲む
+                        svg.append(f"<rect x='{cx-8}' y='{cy-8}' width='16' height='16' fill='{color_map.get(color, '#999')}' />")
                     elif val == "X":
                         svg.append(f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="18" fill="#fff">×</text>')
             first = path_states[0].path
