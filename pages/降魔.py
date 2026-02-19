@@ -18,43 +18,77 @@ if "last_result" not in st.session_state:
 
 st.title("Kouma Simulator — Streamlit")
 
-with st.sidebar:
-    st.header("パレット")
-    palette = [
-        ("P","P"),("R","R"),("B","B"),("G","G"),("Y","Y"),
-        ("B5","B5"),("X","X"),("T_R5","T_R5"),("T_B5","T_B5"),
-        ("T_G5","T_G5"),("T_Y5","T_Y5"),("C","C")
-    ]
-    for key,label in palette:
-        if st.button(label, key=f"pal_{key}"):
-            st.session_state.selected = key
-    st.markdown("---")
-    st.write("選択中:", st.session_state.selected)
-    st.markdown("---")
+# --- パレット（盤面上部に表示） ---
+palette_items = [
+    ("P", "P"),
+    ("R", "R"),
+    ("B", "B"),
+    ("G", "G"),
+    ("Y", "Y"),
+    ("B5", "B5"),
+    ("X", "X"),
+    ("T_R5", "T_R5"),
+    ("T_B5", "T_B5"),
+    ("T_G5", "T_G5"),
+    ("T_Y5", "T_Y5"),
+    ("C", "C"),
+    ("ERASE", "消しゴム")
+]
+
+cols = st.columns(len(palette_items))
+for i, (key, label) in enumerate(palette_items):
+    # 選択表示をわかりやすくするためにボタンではなく選択時に色を変える
+    is_selected = (st.session_state.selected == key)
+    btn_label = f"[{label}]" if is_selected else label
+    if cols[i].button(btn_label, key=f"pal_{key}"):
+        st.session_state.selected = key
+
+st.markdown(f"**選択中:** {st.session_state.selected}")
+
+st.markdown("---")
+
+# --- 設定パネル（右上に寄せる） ---
+with st.expander("設定 / 情報", expanded=False):
     st.write("実行モード: **memo（固定）**")
     max_steps = st.number_input("max_steps (nomemo 用)", value=200000, step=10000)
     beam_width = st.number_input("beam_width (beam 用)", value=300, step=50)
+    st.write("注意: beam は UI からは使えません（サーバ版で修正予定）")
 
-cols = st.columns(7)
+st.markdown("---")
+
+# --- 盤面表示（7x7） ---
+board_cols = []
 for y in range(7):
     row_cols = st.columns(7)
+    board_cols.append(row_cols)
     for x in range(7):
         key = f"cell_{x}_{y}"
         val = st.session_state.board[y][x]
         label = val if val else "・"
+        # ボタンラベルを見やすくする（色は簡易）
         if row_cols[x].button(label, key=key):
             sel = st.session_state.selected
-            if sel == "P":
+            # 消しゴム
+            if sel == "ERASE":
+                st.session_state.board[y][x] = ""
+            # プレイヤーは一つだけ
+            elif sel == "P":
+                # 既存の P を消す
                 for yy in range(7):
                     for xx in range(7):
                         if st.session_state.board[yy][xx] == "P":
                             st.session_state.board[yy][xx] = ""
                 st.session_state.board[y][x] = "P"
             else:
-                st.session_state.board[y][x] = sel if st.session_state.board[y][x] != sel else ""
+                # 非Pは複数配置可能。クリックでトグル（同じなら消す）
+                if st.session_state.board[y][x] == sel:
+                    st.session_state.board[y][x] = ""
+                else:
+                    st.session_state.board[y][x] = sel
 
 st.markdown("---")
 
+# --- 実行ボタン ---
 if st.button("シミュレーション実行"):
     board_input = st.session_state.board
     boss_counter = [0]
@@ -71,9 +105,7 @@ if st.button("シミュレーション実行"):
     stats["wall_time_ms"] = int((t1 - t0) * 1000)
     st.session_state.last_result = {"paths": results, "stats": stats}
 
-st.sidebar.markdown("---")
-st.sidebar.write("注意: beam は UI からは使えません（サーバ版で修正予定）")
-
+# --- 結果表示と SVG 描画 ---
 if st.session_state.last_result:
     res = st.session_state.last_result
     st.subheader("結果")
@@ -103,11 +135,11 @@ if st.session_state.last_result:
                 y = i * cell_h
                 svg.append(f'<line x1="{x}" y1="0" x2="{x}" y2="{svg_h}" stroke="#333" stroke-width="1"/>')
                 svg.append(f'<line x1="0" y1="{y}" x2="{svg_w}" y2="{y}" stroke="#333" stroke-width="1"/>')
-            for y in range(7):
-                for x in range(7):
-                    cx = x * cell_w + cell_w/2
-                    cy = y * cell_h + cell_h/2
-                    val = st.session_state.board[y][x]
+            for yy in range(7):
+                for xx in range(7):
+                    cx = xx * cell_w + cell_w/2
+                    cy = yy * cell_h + cell_h/2
+                    val = st.session_state.board[yy][xx]
                     if val == "P":
                         svg.append(f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="18" fill="#fff" font-weight="bold">P</text>')
                     elif val and val.startswith("B"):
@@ -118,7 +150,6 @@ if st.session_state.last_result:
                     elif val and val.startswith("T_"):
                         color = val[2]
                         color_map = {"R":"#ef5350","G":"#66bb6a","B":"#42a5f5","Y":"#ffd54f"}
-                        # 修正: エスケープを避けるため外側をダブルクォート、属性内はシングルクォートで囲む
                         svg.append(f"<rect x='{cx-8}' y='{cy-8}' width='16' height='16' fill='{color_map.get(color, '#999')}' />")
                     elif val == "X":
                         svg.append(f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="18" fill="#fff">×</text>')
