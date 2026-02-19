@@ -47,15 +47,6 @@ st.markdown(f"**選択中:** {st.session_state.selected}")
 
 st.markdown("---")
 
-# --- 設定パネル（右上に寄せる） ---
-with st.expander("設定 / 情報", expanded=False):
-    st.write("実行モード: **memo（固定）**")
-    max_steps = st.number_input("max_steps (nomemo 用)", value=200000, step=10000)
-    beam_width = st.number_input("beam_width (beam 用)", value=300, step=50)
-    st.write("注意: beam は UI からは使えません（サーバ版で修正予定）")
-
-st.markdown("---")
-
 # --- 盤面表示（7x7） ---
 board_cols = []
 for y in range(7):
