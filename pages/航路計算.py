@@ -90,7 +90,7 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
         if unit_profit <= 0:
             continue
         candidates.append((item, buy, sell, unit_profit, avail))
-    candidates.sort(key=lambda x: x[3], reverse=True)
+    candidates.sort(key=lambda x: x[3], reverse=True)  # ←ここが「利益率的な順序」として使われている
     remaining_cash = cash
     plan = []
     for item, buy, sell, unit_profit, avail in candidates:
@@ -105,6 +105,7 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     total_cost = sum(q * b for _, q, b, _, _ in plan)
     total_profit = sum(q * up for _, q, _, _, up in plan)
     return plan, total_cost, total_profit
+
 
 # --------------------
 # CSV から価格表を取得して price_matrix を作る
