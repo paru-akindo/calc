@@ -90,7 +90,18 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
         if unit_profit <= 0:
             continue
         candidates.append((item, buy, sell, unit_profit, avail))
-    candidates.sort(key=lambda x: x[3], reverse=True)  # ←ここが「利益率的な順序」として使われている
+
+    # ★ 利益額 greedy（最重要修正ポイント）
+    def score(c):
+        _, buy, _, unit_profit, avail = c
+        if buy <= 0:
+            return 0
+        max_by_cash = cash // buy
+        qty = min(avail, max_by_cash)
+        return unit_profit * qty  # ←利益額
+
+    candidates.sort(key=score, reverse=True)
+
     remaining_cash = cash
     plan = []
     for item, buy, sell, unit_profit, avail in candidates:
@@ -102,9 +113,11 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
         remaining_cash -= qty * buy
         if remaining_cash <= 0:
             break
+
     total_cost = sum(q * b for _, q, b, _, _ in plan)
     total_profit = sum(q * up for _, q, _, _, up in plan)
     return plan, total_cost, total_profit
+
 
 
 # --------------------
