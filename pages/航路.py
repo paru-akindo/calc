@@ -107,7 +107,11 @@ def highlight_empty(val):
         return "background-color: pink"
     return ""
 
-styled_df = df.style.applymap(highlight_empty, subset=["予約者"])
+# pandas 2.x 対応版 Styler
+styled_df = df.style.apply(
+    lambda col: col.map(highlight_empty),
+    subset=["予約者"]
+)
 
 # 横幅100%、高さ調整でスマホ対応
 st.dataframe(styled_df, height=736, use_container_width=True)
