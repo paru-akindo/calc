@@ -228,7 +228,7 @@ with col2:
             ratio = float("inf")
         item_scores.append((name, buy, base, ratio))
     item_scores.sort(key=lambda t: (t[3], t[1]))
-    top5 = item_scores[:5]
+    top5 = item_scores[:10]
 
     st.write("在庫入力対象（お買い得上位5）")
     stock_inputs = {}
