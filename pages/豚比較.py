@@ -39,7 +39,7 @@ FEED = EVENT_DATA[EVENT_KEYS[0]]["feed"]
 ITEM = EVENT_DATA[EVENT_KEYS[0]]["item"]
 
 # ============================================================
-# ① オリジナル DP（mix / feed / item の3軸で返す）
+# オリジナルDP（完全一致用）
 # ============================================================
 def dp_original(points, N):
     OPTIONS = []
@@ -87,106 +87,64 @@ def dp_original(points, N):
 
 
 # ============================================================
-# ② 3 系統 DP（feed / item / mix）
+# 高速オリジナルDP（完全一致・Pareto枝刈り）
 # ============================================================
-def dp_triple(points, N):
+def dp_fast_original(points, N):
     OPTIONS = []
     for ev in EVENT_KEYS:
         for stage, cost in enumerate(EVENT_DATA[ev]["costs"], start=1):
             OPTIONS.append((ev, stage, cost))
 
-    # feed / item / mix の3系統を完全に独立して持つ
-    dp_feed = [[] for _ in range(N + 1)]
-    dp_item = [[] for _ in range(N + 1)]
-    dp_mix  = [[] for _ in range(N + 1)]
+    dp = [defaultdict(list) for _ in range(N + 1)]
+    dp[0][tuple(points[k] for k in EVENT_KEYS)] = [(0, 0)]
 
-    dp_feed[0] = [(0, 0, deepcopy(points))]
-    dp_item[0] = [(0, 0, deepcopy(points))]
-    dp_mix[0]  = [(0, 0, deepcopy(points))]
-
-    # ---------------- feed 系 DP ----------------
     for i in range(N):
-        next_states = []
-        for feed_now, item_now, rem_now in dp_feed[i]:
-            for ev, stage, cost in OPTIONS:
-                if rem_now[ev] < cost:
+        for state_key, states in dp[i].items():
+            rem_now = dict(zip(EVENT_KEYS, state_key))
+
+            for feed_now, item_now in states:
+                for ev, stage, cost in OPTIONS:
+                    if rem_now[ev] < cost:
+                        continue
+
+                    new_rem = rem_now.copy()
+                    new_rem[ev] -= cost
+                    new_key = tuple(new_rem[k] for k in EVENT_KEYS)
+
+                    new_feed = feed_now + FEED[stage-1]
+                    new_item = item_now + ITEM[stage-1]
+
+                    dp[i+1][new_key].append((new_feed, new_item))
+
+        # 各ポイント残量ごとに Pareto 最適化
+        for key in dp[i+1]:
+            arr = dp[i+1][key]
+            arr.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            pruned = []
+            for f, it in arr:
+                if any(pf >= f and pit >= it for pf, pit in pruned):
                     continue
-                new_rem = rem_now.copy()
-                new_rem[ev] -= cost
-                next_states.append((
-                    feed_now + FEED[stage-1],
-                    item_now + ITEM[stage-1],
-                    new_rem
-                ))
+                pruned.append((f, it))
+            dp[i+1][key] = pruned
 
-        pruned = []
-        next_states.sort(key=lambda x: (x[0], x[1]), reverse=True)
-        for f, it, rem in next_states:
-            if any(pf >= f and pit >= it for pf, pit, _ in pruned):
-                continue
-            pruned.append((f, it, rem))
-        dp_feed[i+1] = pruned
+    # 全状態から最適解を取る
+    all_states = []
+    for states in dp[N].values():
+        all_states.extend(states)
 
-    # ---------------- item 系 DP ----------------
-    for i in range(N):
-        next_states = []
-        for feed_now, item_now, rem_now in dp_item[i]:
-            for ev, stage, cost in OPTIONS:
-                if rem_now[ev] < cost:
-                    continue
-                new_rem = rem_now.copy()
-                new_rem[ev] -= cost
-                next_states.append((
-                    feed_now + FEED[stage-1],
-                    item_now + ITEM[stage-1],
-                    new_rem
-                ))
+    best_mix  = max(all_states, key=lambda x: x[0] + x[1] * 100)
+    best_feed = max(all_states, key=lambda x: (x[0], x[1]))
+    best_item = max(all_states, key=lambda x: (x[1], x[0]))
 
-        pruned = []
-        next_states.sort(key=lambda x: (x[1], x[0]), reverse=True)
-        for f, it, rem in next_states:
-            if any(pit >= it and pf >= f for pf, pit, _ in pruned):
-                continue
-            pruned.append((f, it, rem))
-        dp_item[i+1] = pruned
-
-    # ---------------- mix 系 DP ----------------
-    for i in range(N):
-        next_states = []
-        for feed_now, item_now, rem_now in dp_mix[i]:
-            for ev, stage, cost in OPTIONS:
-                if rem_now[ev] < cost:
-                    continue
-                new_rem = rem_now.copy()
-                new_rem[ev] -= cost
-                next_states.append((
-                    feed_now + FEED[stage-1],
-                    item_now + ITEM[stage-1],
-                    new_rem
-                ))
-
-        pruned = []
-        next_states.sort(key=lambda x: x[0] + x[1] * 100, reverse=True)
-        for f, it, rem in next_states:
-            if any(pf + pit*100 >= f + it*100 for pf, pit, _ in pruned):
-                continue
-            pruned.append((f, it, rem))
-        dp_mix[i+1] = pruned
-
-    # 最適解を返す
-    best_feed = max(dp_feed[N], key=lambda x: (x[0], x[1]))
-    best_item = max(dp_item[N], key=lambda x: (x[1], x[0]))
-    best_mix  = max(dp_mix[N],  key=lambda x: x[0] + x[1] * 100)
-
-    return (best_mix[0], best_mix[1]), (best_feed[0], best_feed[1]), (best_item[0], best_item[1])
+    return best_mix, best_feed, best_item
 
 
 # ============================================================
 # Streamlit UI
 # ============================================================
-st.title("🐷 DP 自動検証ツール（3系統DP × 10回ランダムテスト）")
+st.title("🐷 完全一致版 高速オリジナルDP × 10回検証")
 
-count = st.number_input("残り育成回数（最大10）", min_value=1, max_value=10, value=5)
+count = st.number_input("残り育成回数（最大10）", min_value=1, max_value=10, value=10)
 
 if st.button("10回テスト実行"):
     st.write("### 🚀 実行中…")
@@ -197,7 +155,6 @@ if st.button("10回テスト実行"):
     success_item = 0
 
     for t in range(10):
-        # ランダムポイント生成
         random_points = {}
         for ev in EVENT_KEYS:
             stage2 = EVENT_DATA[ev]["costs"][1]
@@ -209,9 +166,9 @@ if st.button("10回テスト実行"):
         o_mix, o_feed, o_item = dp_original(random_points, count)
         t1 = time.perf_counter()
 
-        # 3系統DP
+        # 高速版
         t2 = time.perf_counter()
-        f_mix, f_feed, f_item = dp_triple(random_points, count)
+        f_mix, f_feed, f_item = dp_fast_original(random_points, count)
         t3 = time.perf_counter()
 
         ok_mix  = (o_mix  == f_mix)
