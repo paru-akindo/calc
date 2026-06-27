@@ -39,7 +39,7 @@ FEED = EVENT_DATA[EVENT_KEYS[0]]["feed"]
 ITEM = EVENT_DATA[EVENT_KEYS[0]]["item"]
 
 # ============================================================
-# オリジナルDP（完全一致用）
+# オリジナルDP（完全一致基準）
 # ============================================================
 def dp_original(points, N):
     OPTIONS = []
@@ -87,9 +87,9 @@ def dp_original(points, N):
 
 
 # ============================================================
-# 高速オリジナルDP（完全一致・Pareto枝刈り）
+# fast1：軽量最適化（枝刈り O(n²→n)）
 # ============================================================
-def dp_fast_original(points, N):
+def dp_fast1(points, N):
     OPTIONS = []
     for ev in EVENT_KEYS:
         for stage, cost in enumerate(EVENT_DATA[ev]["costs"], start=1):
@@ -116,18 +116,77 @@ def dp_fast_original(points, N):
 
                     dp[i+1][new_key].append((new_feed, new_item))
 
-        # 各ポイント残量ごとに Pareto 最適化
+        # Pareto 最適化（O(n)）
         for key in dp[i+1]:
             arr = dp[i+1][key]
             arr.sort(key=lambda x: (x[0], x[1]), reverse=True)
             pruned = []
+            best_item = -1
             for f, it in arr:
-                if any(pf >= f and pit >= it for pf, pit in pruned):
-                    continue
-                pruned.append((f, it))
+                if it > best_item:
+                    pruned.append((f, it))
+                    best_item = it
             dp[i+1][key] = pruned
 
-    # 全状態から最適解を取る
+    all_states = []
+    for states in dp[N].values():
+        all_states.extend(states)
+
+    best_mix  = max(all_states, key=lambda x: x[0] + x[1] * 100)
+    best_feed = max(all_states, key=lambda x: (x[0], x[1]))
+    best_item = max(all_states, key=lambda x: (x[1], x[0]))
+
+    return best_mix, best_feed, best_item
+
+
+# ============================================================
+# fast2：中量最適化（fast1 + イベント順固定 + 辞書キー削減）
+# ============================================================
+def dp_fast2(points, N):
+    OPTIONS = []
+    # イベント順固定（高速化）
+    for ev in ["nankai", "puzzle", "hana", "shousen"]:
+        for stage, cost in enumerate(EVENT_DATA[ev]["costs"], start=1):
+            OPTIONS.append((ev, stage, cost))
+
+    dp = [defaultdict(list) for _ in range(N + 1)]
+    dp[0][tuple(points[k] for k in EVENT_KEYS)] = [(0, 0)]
+
+    for i in range(N):
+        for state_key, states in dp[i].items():
+            rem_now = dict(zip(EVENT_KEYS, state_key))
+
+            for feed_now, item_now in states:
+                for ev, stage, cost in OPTIONS:
+                    if rem_now[ev] < cost:
+                        continue
+
+                    new_rem = rem_now.copy()
+                    new_rem[ev] -= cost
+                    new_key = (
+                        new_rem["shousen"],
+                        new_rem["puzzle"],
+                        new_rem["nankai"],
+                        new_rem["hana"]
+                    )
+
+                    new_feed = feed_now + FEED[stage-1]
+                    new_item = item_now + ITEM[stage-1]
+
+                    dp[i+1][new_key].append((new_feed, new_item))
+
+        # Pareto 最適化（O(n)）
+        for key in dp[i+1]:
+            arr = dp[i+1][key]
+            arr.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            pruned = []
+            best_item = -1
+            for f, it in arr:
+                if it > best_item:
+                    pruned.append((f, it))
+                    best_item = it
+            dp[i+1][key] = pruned
+
     all_states = []
     for states in dp[N].values():
         all_states.extend(states)
@@ -142,7 +201,7 @@ def dp_fast_original(points, N):
 # ============================================================
 # Streamlit UI
 # ============================================================
-st.title("🐷 完全一致版 高速オリジナルDP × 10回検証")
+st.title("🐷 original / fast1 / fast2 比較検証ツール（10回ランダムテスト）")
 
 count = st.number_input("残り育成回数（最大10）", min_value=1, max_value=10, value=10)
 
@@ -150,9 +209,8 @@ if st.button("10回テスト実行"):
     st.write("### 🚀 実行中…")
 
     results = []
-    success_mix = 0
-    success_feed = 0
-    success_item = 0
+    ok1_mix = ok1_feed = ok1_item = 0
+    ok2_mix = ok2_feed = ok2_item = 0
 
     for t in range(10):
         random_points = {}
@@ -161,44 +219,68 @@ if st.button("10回テスト実行"):
             stage4 = EVENT_DATA[ev]["costs"][3]
             random_points[ev] = random.randint(stage2, stage4 * 2)
 
-        # オリジナル
+        # original
         t0 = time.perf_counter()
         o_mix, o_feed, o_item = dp_original(random_points, count)
         t1 = time.perf_counter()
 
-        # 高速版
+        # fast1
         t2 = time.perf_counter()
-        f_mix, f_feed, f_item = dp_fast_original(random_points, count)
+        f1_mix, f1_feed, f1_item = dp_fast1(random_points, count)
         t3 = time.perf_counter()
 
-        ok_mix  = (o_mix  == f_mix)
-        ok_feed = (o_feed == f_feed)
-        ok_item = (o_item == f_item)
+        # fast2
+        t4 = time.perf_counter()
+        f2_mix, f2_feed, f2_item = dp_fast2(random_points, count)
+        t5 = time.perf_counter()
 
-        if ok_mix:  success_mix  += 1
-        if ok_feed: success_feed += 1
-        if ok_item: success_item += 1
+        # 一致判定
+        m1 = (o_mix == f1_mix)
+        f1 = (o_feed == f1_feed)
+        i1 = (o_item == f1_item)
+
+        m2 = (o_mix == f2_mix)
+        f2 = (o_feed == f2_feed)
+        i2 = (o_item == f2_item)
+
+        ok1_mix += m1
+        ok1_feed += f1
+        ok1_item += i1
+
+        ok2_mix += m2
+        ok2_feed += f2
+        ok2_item += i2
 
         results.append({
-            "test": t + 1,
+            "test": t+1,
             "points": random_points,
-            "mix_orig": o_mix,
-            "mix_fast": f_mix,
-            "mix_match": ok_mix,
-            "feed_orig": o_feed,
-            "feed_fast": f_feed,
-            "feed_match": ok_feed,
-            "item_orig": o_item,
-            "item_fast": f_item,
-            "item_match": ok_item,
+
+            "orig_mix": o_mix,
+            "fast1_mix": f1_mix,
+            "fast2_mix": f2_mix,
+            "mix1_match": m1,
+            "mix2_match": m2,
+
+            "orig_feed": o_feed,
+            "fast1_feed": f1_feed,
+            "fast2_feed": f2_feed,
+            "feed1_match": f1,
+            "feed2_match": f2,
+
+            "orig_item": o_item,
+            "fast1_item": f1_item,
+            "fast2_item": f2_item,
+            "item1_match": i1,
+            "item2_match": i2,
+
             "time_orig_ms": (t1 - t0) * 1000,
-            "time_fast_ms": (t3 - t2) * 1000,
+            "time_fast1_ms": (t3 - t2) * 1000,
+            "time_fast2_ms": (t5 - t4) * 1000,
         })
 
     st.write("### 🔍 結果一覧")
     st.table(results)
 
-    st.write(f"### 🎉 一致率（10回中）")
-    st.write(f"- 複合スコア（mix）：{success_mix} / 10")
-    st.write(f"- 餌軸（feed）：{success_feed} / 10")
-    st.write(f"- アイテム軸（item）：{success_item} / 10")
+    st.write("### 🎉 一致率（10回中）")
+    st.write(f"- fast1（軽量） mix/feed/item：{ok1_mix}/{ok1_feed}/{ok1_item}")
+    st.write(f"- fast2（中量） mix/feed/item：{ok2_mix}/{ok2_feed}/{ok2_item}")
