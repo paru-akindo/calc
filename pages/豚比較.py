@@ -87,114 +87,104 @@ def dp_original(points, N):
 
 
 # ============================================================
-# ② 2 系統 DP（feed 系 + item 系）
+# ② 3 系統 DP（feed / item / mix）
 # ============================================================
-def dp_dual(points, N):
+def dp_triple(points, N):
     OPTIONS = []
     for ev in EVENT_KEYS:
         for stage, cost in enumerate(EVENT_DATA[ev]["costs"], start=1):
             OPTIONS.append((ev, stage, cost))
 
-    # feed 系 DP と item 系 DP を別々に持つ
+    # feed / item / mix の3系統を完全に独立して持つ
     dp_feed = [[] for _ in range(N + 1)]
     dp_item = [[] for _ in range(N + 1)]
+    dp_mix  = [[] for _ in range(N + 1)]
 
     dp_feed[0] = [(0, 0, deepcopy(points))]
     dp_item[0] = [(0, 0, deepcopy(points))]
+    dp_mix[0]  = [(0, 0, deepcopy(points))]
 
-    # ------------------------------
-    # feed 系 DP
-    # ------------------------------
+    # ---------------- feed 系 DP ----------------
     for i in range(N):
         next_states = []
         for feed_now, item_now, rem_now in dp_feed[i]:
             for ev, stage, cost in OPTIONS:
                 if rem_now[ev] < cost:
                     continue
-
                 new_rem = rem_now.copy()
                 new_rem[ev] -= cost
-
-                feed_gain = FEED[stage - 1]
-                item_gain = ITEM[stage - 1]
-
                 next_states.append((
-                    feed_now + feed_gain,
-                    item_now + item_gain,
+                    feed_now + FEED[stage-1],
+                    item_now + ITEM[stage-1],
                     new_rem
                 ))
 
-        # feed 軸の枝刈り（feed → item）
         pruned = []
         next_states.sort(key=lambda x: (x[0], x[1]), reverse=True)
-
         for f, it, rem in next_states:
-            dominated = False
-            for pf, pit, _ in pruned:
-                if pf >= f and pit >= it:
-                    dominated = True
-                    break
-            if not dominated:
-                pruned.append((f, it, rem))
+            if any(pf >= f and pit >= it for pf, pit, _ in pruned):
+                continue
+            pruned.append((f, it, rem))
+        dp_feed[i+1] = pruned
 
-        dp_feed[i + 1] = pruned
-
-    # ------------------------------
-    # item 系 DP
-    # ------------------------------
+    # ---------------- item 系 DP ----------------
     for i in range(N):
         next_states = []
         for feed_now, item_now, rem_now in dp_item[i]:
             for ev, stage, cost in OPTIONS:
                 if rem_now[ev] < cost:
                     continue
-
                 new_rem = rem_now.copy()
                 new_rem[ev] -= cost
-
-                feed_gain = FEED[stage - 1]
-                item_gain = ITEM[stage - 1]
-
                 next_states.append((
-                    feed_now + feed_gain,
-                    item_now + item_gain,
+                    feed_now + FEED[stage-1],
+                    item_now + ITEM[stage-1],
                     new_rem
                 ))
 
-        # item 軸の枝刈り（item → feed）
         pruned = []
         next_states.sort(key=lambda x: (x[1], x[0]), reverse=True)
-
         for f, it, rem in next_states:
-            dominated = False
-            for pf, pit, _ in pruned:
-                if pit >= it and pf >= f:
-                    dominated = True
-                    break
-            if not dominated:
-                pruned.append((f, it, rem))
+            if any(pit >= it and pf >= f for pf, pit, _ in pruned):
+                continue
+            pruned.append((f, it, rem))
+        dp_item[i+1] = pruned
 
-        dp_item[i + 1] = pruned
+    # ---------------- mix 系 DP ----------------
+    for i in range(N):
+        next_states = []
+        for feed_now, item_now, rem_now in dp_mix[i]:
+            for ev, stage, cost in OPTIONS:
+                if rem_now[ev] < cost:
+                    continue
+                new_rem = rem_now.copy()
+                new_rem[ev] -= cost
+                next_states.append((
+                    feed_now + FEED[stage-1],
+                    item_now + ITEM[stage-1],
+                    new_rem
+                ))
 
-    # ------------------------------
-    # 3 評価軸の最適解を返す
-    # ------------------------------
-    feed_best = max(dp_feed[N], key=lambda x: (x[0], x[1]))
-    item_best = max(dp_item[N], key=lambda x: (x[1], x[0]))
+        pruned = []
+        next_states.sort(key=lambda x: x[0] + x[1] * 100, reverse=True)
+        for f, it, rem in next_states:
+            if any(pf + pit*100 >= f + it*100 for pf, pit, _ in pruned):
+                continue
+            pruned.append((f, it, rem))
+        dp_mix[i+1] = pruned
 
-    # mix は feed/item の両方から最大を取る
-    mix_best = max(
-        dp_feed[N] + dp_item[N],
-        key=lambda x: x[0] + x[1] * 100
-    )
+    # 最適解を返す
+    best_feed = max(dp_feed[N], key=lambda x: (x[0], x[1]))
+    best_item = max(dp_item[N], key=lambda x: (x[1], x[0]))
+    best_mix  = max(dp_mix[N],  key=lambda x: x[0] + x[1] * 100)
 
-    return (mix_best[0], mix_best[1]), (feed_best[0], feed_best[1]), (item_best[0], item_best[1])
+    return (best_mix[0], best_mix[1]), (best_feed[0], best_feed[1]), (best_item[0], best_item[1])
 
 
 # ============================================================
 # Streamlit UI
 # ============================================================
-st.title("🐷 DP 自動検証ツール（2系統DP × 10回ランダムテスト）")
+st.title("🐷 DP 自動検証ツール（3系統DP × 10回ランダムテスト）")
 
 count = st.number_input("残り育成回数（最大10）", min_value=1, max_value=10, value=5)
 
@@ -219,9 +209,9 @@ if st.button("10回テスト実行"):
         o_mix, o_feed, o_item = dp_original(random_points, count)
         t1 = time.perf_counter()
 
-        # 2系統DP
+        # 3系統DP
         t2 = time.perf_counter()
-        f_mix, f_feed, f_item = dp_dual(random_points, count)
+        f_mix, f_feed, f_item = dp_triple(random_points, count)
         t3 = time.perf_counter()
 
         ok_mix  = (o_mix  == f_mix)
