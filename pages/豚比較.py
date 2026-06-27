@@ -40,16 +40,13 @@ FEED = EVENT_DATA[EVENT_KEYS[0]]["feed"]
 ITEM = EVENT_DATA[EVENT_KEYS[0]]["item"]
 
 # ============================================================
-# オリジナル DP
+# ① オリジナル DP（mix / feed / item の3軸で返す）
 # ============================================================
 def dp_original(points, N):
     OPTIONS = []
-    STAGE_MAP = {}
-
     for key, ev in EVENT_DATA.items():
         for stage, cost in enumerate(ev["costs"], start=1):
             OPTIONS.append((key, cost, ev["feed"][stage-1], ev["item"][stage-1]))
-            STAGE_MAP[cost] = stage
 
     event_keys = list(EVENT_DATA.keys())
     dp = [defaultdict(lambda: {"feed": -1, "item": -1}) for _ in range(N + 1)]
@@ -83,11 +80,20 @@ def dp_original(points, N):
         for st in dp[i].values():
             results.append((st["feed"], st["item"]))
 
-    return max(results, key=lambda x: x[0] + x[1] * 100)
+    # mix 最大
+    best_mix = max(results, key=lambda x: x[0] + x[1] * 100)
+
+    # feed 軸（feed → item）
+    best_feed = max(results, key=lambda x: (x[0], x[1]))
+
+    # item 軸（item → feed）
+    best_item = max(results, key=lambda x: (x[1], x[0]))
+
+    return best_mix, best_feed, best_item
 
 
 # ============================================================
-# 段階縮約DP（完全一致版）
+# ② 段階縮約DP（完全一致版）
 # ============================================================
 def dp_fast(points, N):
     OPTIONS = []
@@ -138,13 +144,17 @@ def dp_fast(points, N):
         for f, it, rem in states:
             results.append((f, it))
 
-    return max(results, key=lambda x: x[0] + x[1] * 100)
+    best_mix = max(results, key=lambda x: x[0] + x[1] * 100)
+    best_feed = max(results, key=lambda x: (x[0], x[1]))
+    best_item = max(results, key=lambda x: (x[1], x[0]))
+
+    return best_mix, best_feed, best_item
 
 
 # ============================================================
 # Streamlit UI
 # ============================================================
-st.title("🐷 DP 自動検証ツール（10回ランダムテスト）")
+st.title("🐷 DP 自動検証ツール（10回ランダムテスト × 3評価軸）")
 
 count = st.number_input("残り育成回数（最大10）", min_value=1, max_value=10, value=5)
 
@@ -152,10 +162,12 @@ if st.button("10回テスト実行"):
     st.write("### 🚀 実行中…")
 
     results = []
-    success = 0
+    success_mix = 0
+    success_feed = 0
+    success_item = 0
 
     for t in range(10):
-        # ランダムポイント生成
+        # ランダムポイント生成（段階2〜段階4×2）
         random_points = {}
         for ev in EVENT_KEYS:
             stage2 = EVENT_DATA[ev]["costs"][1]
@@ -163,26 +175,37 @@ if st.button("10回テスト実行"):
             random_points[ev] = random.randint(stage2, stage4 * 2)
 
         # オリジナル
-        o_feed, o_item = dp_original(random_points, count)
+        o_mix, o_feed, o_item = dp_original(random_points, count)
 
         # 高速版
-        f_feed, f_item = dp_fast(random_points, count)
+        f_mix, f_feed, f_item = dp_fast(random_points, count)
 
-        ok = (o_feed == f_feed and o_item == f_item)
-        if ok:
-            success += 1
+        ok_mix = (o_mix == f_mix)
+        ok_feed = (o_feed == f_feed)
+        ok_item = (o_item == f_item)
+
+        if ok_mix: success_mix += 1
+        if ok_feed: success_feed += 1
+        if ok_item: success_item += 1
 
         results.append({
             "test": t + 1,
             "points": random_points,
-            "orig_feed": o_feed,
-            "orig_item": o_item,
-            "fast_feed": f_feed,
-            "fast_item": f_item,
-            "match": ok
+            "mix_orig": o_mix,
+            "mix_fast": f_mix,
+            "mix_match": ok_mix,
+            "feed_orig": o_feed,
+            "feed_fast": f_feed,
+            "feed_match": ok_feed,
+            "item_orig": o_item,
+            "item_fast": f_item,
+            "item_match": ok_item
         })
 
     st.write("### 🔍 結果一覧")
     st.table(results)
 
-    st.write(f"### 🎉 一致率: {success} / 10 回")
+    st.write(f"### 🎉 一致率（10回中）")
+    st.write(f"- 複合スコア（mix）：{success_mix} / 10")
+    st.write(f"- 餌軸（feed）：{success_feed} / 10")
+    st.write(f"- アイテム軸（item）：{success_item} / 10")
