@@ -382,6 +382,23 @@ except Exception as e:
     st.error(f"スプレッドシート（CSV）からの読み込みに失敗しました: {e}")
     st.stop()
 
+# --------------------
+# 在庫入力（可変）
+# --------------------
+st.subheader("在庫入力（任意）")
+
+stock = {}
+# ITEMS に合わせて自動で入力欄を生成。UI で在庫数を変更できる。
+for item, base in ITEMS:
+    qty = st.number_input(
+        f"{item} の在庫数",
+        min_value=0,
+        value=0,
+        step=1,
+        key=f"stock_{item}"
+    )
+    stock[item] = qty
+
 # 単一遷移プレビュー（内部計算）
 CASH_DEFAULT = 50000
 mapping_preview, candidates_preview = compute_single_step_multipliers_oneitem(price_matrix, ports, ports, CASH_DEFAULT)
@@ -410,7 +427,15 @@ st.dataframe(df_preview, height=320)
 st.markdown("---")
 st.subheader("ルート解析（自動）")
 
-AUTO_TOP_K = 5
+# ★ UI スライダーで可変にする（1〜10）
+AUTO_TOP_K = st.slider(
+    "開始港の候補数（top_k_start）",
+    min_value=1,
+    max_value=10,
+    value=5,
+    step=1
+)
+
 CASH_DEFAULT = 50000
 
 # 単一遷移の候補を並べて開始候補順を作る
