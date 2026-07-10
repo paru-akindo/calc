@@ -118,8 +118,6 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     total_profit = sum(q * up for _, q, _, _, up in plan)
     return plan, total_cost, total_profit
 
-
-
 # --------------------
 # CSV から価格表を取得して price_matrix を作る
 # price_matrix: { item_name: { port_name: price_int, ... }, ... }
@@ -153,15 +151,10 @@ def fetch_price_matrix_from_csv_auto(url: str):
     # より確実な判定: 1列目のいずれかが ITEMS 名に含まれる -> 行が品目形式（要転置）
     any_first_col_is_item = any(v in items_names for v in first_col_values)
     if any_first_col_is_item:
-        # ファイルは行=品目、列=港の形式。転置して扱う。
-        # 現在 df.index are items, columns are ['港名1','港2',...]
-        # Ensure first column is item names
         df_items = df.set_index(df.columns[0])
         df_t = df_items.transpose().reset_index()
-        # 新しい df_t: first col is port name in column 'index' or original header name
         port_col = df_t.columns[0]
         ports = df_t[port_col].astype(str).tolist()
-        # build price matrix using ITEMS order
         price_matrix = {name: {} for name, _ in ITEMS}
         for name, _ in ITEMS:
             if name in df_t.columns:
@@ -176,7 +169,6 @@ def fetch_price_matrix_from_csv_auto(url: str):
                     price_matrix[name][p] = 0
         return ports, price_matrix
     else:
-        # 想定通り 行=港、列=品目 の形式
         port_col = df.columns[0]
         ports = df[port_col].astype(str).tolist()
         price_matrix = {name: {} for name, _ in ITEMS}
@@ -217,7 +209,7 @@ with col2:
     current_port = st.selectbox("現在港", ports, index=0)
     cash = numeric_input_optional_strict("所持金", key="cash_input", placeholder="例: 5000", allow_commas=True, min_value=0)
 
-    # お買い得上位5の選定: 現在港の価格 / 基礎値 が小さい順に top5
+    # お買い得上位Nの選定: 現在港の価格 / 基礎値 が小さい順に上位を取る
     item_scores = []
     for name, base in ITEMS:
         buy = price_matrix.get(name, {}).get(current_port, 0)
@@ -228,21 +220,34 @@ with col2:
             ratio = float("inf")
         item_scores.append((name, buy, base, ratio))
     item_scores.sort(key=lambda t: (t[3], t[1]))
-    top5 = item_scores[:5]
 
-    st.write("在庫入力対象（お買い得上位5）")
+    # UI: 在庫入力対象の上位表示数を可変にする（デフォルト5）
+    max_n = len(ITEMS)
+    top_n = st.slider(
+        "在庫入力対象 上位何品目を表示するか",
+        min_value=1,
+        max_value=max_n,
+        value=5,
+        step=1,
+        key="top_n_items"
+    )
+
+    # 可変化した上位リスト（変数名を top_items に変更）
+    top_items = item_scores[:top_n]
+
+    st.write("在庫入力対象（お買い得上位）")
     stock_inputs = {}
     # 行ごと2カラムで表示（スマホでも順序崩れない）
-    for row_start in range(0, len(top5), 2):
+    for row_start in range(0, len(top_items), 2):
         c_left, c_right = st.columns(2)
-        name, buy, base, ratio = top5[row_start]
-        pct = int(round((buy - base) / base * 100)) if base != 0 and buy>0 else 0
+        name, buy, base, ratio = top_items[row_start]
+        pct = int(round((buy - base) / base * 100)) if base != 0 and buy > 0 else 0
         label = f"{name}（価格: {buy}, 補正: {pct:+d}%）"
         with c_left:
             stock_inputs[name] = numeric_input_optional_strict(label, key=f"stk_{name}", placeholder="在庫数", allow_commas=True, min_value=0)
-        if row_start + 1 < len(top5):
-            name2, buy2, base2, ratio2 = top5[row_start+1]
-            pct2 = int(round((buy2 - base2) / base2 * 100)) if base2 != 0 and buy2>0 else 0
+        if row_start + 1 < len(top_items):
+            name2, buy2, base2, ratio2 = top_items[row_start+1]
+            pct2 = int(round((buy2 - base2) / base2 * 100)) if base2 != 0 and buy2 > 0 else 0
             label2 = f"{name2}（価格: {buy2}, 補正: {pct2:+d}%）"
             with c_right:
                 stock_inputs[name2] = numeric_input_optional_strict(label2, key=f"stk_{name2}", placeholder="在庫数", allow_commas=True, min_value=0)
@@ -262,7 +267,7 @@ with col2:
             if invalid_found:
                 st.error("不正入力があるため中止します。")
             else:
-                # current_stock 初期化（全品目 0）、トップ5の入力値だけ反映
+                # current_stock 初期化（全品目 0）、トップNの入力値だけ反映
                 current_stock = {n: 0 for n, _ in ITEMS}
                 for name in stock_inputs:
                     val = stock_inputs.get(name)
