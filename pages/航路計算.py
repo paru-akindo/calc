@@ -84,21 +84,23 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
         avail = stock.get(item, 0)
         if avail <= 0:
             continue
-        buy = price_matrix[item][current_port]
-        sell = price_matrix[item][dest_port]
+
+        buy = price_matrix.get(item, {}).get(current_port, 0)
+        sell = price_matrix.get(item, {}).get(dest_port, 0)
         unit_profit = sell - buy
         if unit_profit <= 0:
             continue
+
         candidates.append((item, buy, sell, unit_profit, avail))
 
-    # ★ 利益額 greedy（最重要修正ポイント）
+    # ★ 総利益 = unit_profit × min(avail, cash // buy)
     def score(c):
-        _, buy, _, unit_profit, avail = c
+        item, buy, sell, unit_profit, avail = c
         if buy <= 0:
-            return 0
+            return -10**18
         max_by_cash = cash // buy
         qty = min(avail, max_by_cash)
-        return unit_profit * qty  # ←利益額
+        return unit_profit * qty
 
     candidates.sort(key=score, reverse=True)
 
@@ -119,11 +121,7 @@ def greedy_plan_for_destination(current_port: str, dest_port: str, cash: int, st
     return plan, total_cost, total_profit
 
 # --------------------
-# CSV から価格表を取得して price_matrix を作る
-# price_matrix: { item_name: { port_name: price_int, ... }, ... }
-# スプレッドシートの形式:
-#  1行目ヘッダー: 港名, 鳳梨, 魚肉, 酒, ...
-#  2行目以降: 各港の行（左端が港名）
+# ★ 完全修正版 CSV 転置ロジック
 # --------------------
 @st.cache_data(ttl=60)
 def fetch_price_matrix_from_csv_auto(url: str):
@@ -131,59 +129,32 @@ def fetch_price_matrix_from_csv_auto(url: str):
     r.raise_for_status()
     s = r.content.decode("utf-8")
     df = pd.read_csv(StringIO(s))
-    df = df.iloc[:, :21]  # A列（品目名）＋ B〜U列（20港）だけに制限
 
-    if df.shape[1] < 2:
-        raise ValueError("スプレッドシートに品目列/港列が見つかりません。")
+    # ★ Unnamed 列を自動除去（ここが重要）
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+    
+    # 行＝品目、列＝港 → 必ず転置する
+    item_col = df.columns[0]
+    df_items = df.set_index(item_col)
+    df_t = df_items.transpose().reset_index()
 
-    # 判定: 1列目の値が既知の港名リストにマッチするか、あるいは1行目が既知の品目名にマッチするか
-    first_col_name = df.columns[0]
-    first_col_values = df[first_col_name].astype(str).tolist()
+    port_col = df_t.columns[0]
+    ports = df_t[port_col].astype(str).tolist()
 
-    # ITEMS の名前リスト（コード内定義順）
-    items_names = [name for name, _ in ITEMS]
-    # ports 候補はヘッダの2列目以降（もし行が品目の形式ならヘッダーが港名になる）
-    header_ports = list(df.columns[1:])
-
-    # 判定1: 行が港になっているか（1列目の値が港名候補に含まれる）
-    row_is_port = all(val in header_ports or val in header_ports or val in first_col_values for val in first_col_values)  # fallback, not strict
-
-    # より確実な判定: 1列目のいずれかが ITEMS 名に含まれる -> 行が品目形式（要転置）
-    any_first_col_is_item = any(v in items_names for v in first_col_values)
-    if any_first_col_is_item:
-        df_items = df.set_index(df.columns[0])
-        df_t = df_items.transpose().reset_index()
-        port_col = df_t.columns[0]
-        ports = df_t[port_col].astype(str).tolist()
-        price_matrix = {name: {} for name, _ in ITEMS}
-        for name, _ in ITEMS:
-            if name in df_t.columns:
-                for idx, p in enumerate(ports):
-                    raw = df_t.at[idx, name]
-                    try:
-                        price_matrix[name][p] = int(raw)
-                    except Exception:
-                        price_matrix[name][p] = 0
-            else:
-                for p in ports:
+    price_matrix = {name: {} for name, _ in ITEMS}
+    for name, _ in ITEMS:
+        if name in df_t.columns:
+            for idx, p in enumerate(ports):
+                raw = df_t.at[idx, name]
+                try:
+                    price_matrix[name][p] = int(raw)
+                except Exception:
                     price_matrix[name][p] = 0
-        return ports, price_matrix
-    else:
-        port_col = df.columns[0]
-        ports = df[port_col].astype(str).tolist()
-        price_matrix = {name: {} for name, _ in ITEMS}
-        for name, _ in ITEMS:
-            if name in df.columns:
-                for idx, p in enumerate(ports):
-                    raw = df.at[idx, name]
-                    try:
-                        price_matrix[name][p] = int(raw)
-                    except Exception:
-                        price_matrix[name][p] = 0
-            else:
-                for p in ports:
-                    price_matrix[name][p] = 0
-        return ports, price_matrix
+        else:
+            for p in ports:
+                price_matrix[name][p] = 0
+
+    return ports, price_matrix
 
 # --------------------
 # UI
