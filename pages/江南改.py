@@ -88,15 +88,25 @@ def simulate_until_next_stage(stage, rank, current, buff):
     next_stage_first_rank = next_stage_ranks[0]
     target_steps.append((next_stage, next_stage_first_rank))
 
-    # ★ 表示用タイトル（自分の段位は出さない）
+    # ★ 表示用タイトル（計算段位の一つ上を表示）
     display_steps = []
-    for stg, rnk in target_steps:
-        if stg == stage:
-            # 自分より下の段位だけ出す（元ソースの target_steps が保証）
-            display_steps.append((stg, rnk))
+    for stg_calc, rnk_calc in target_steps:
+
+        if stg_calc == stage:
+            # 同じ境地 → rank を一つ上にずらす
+            ranks_sorted = sorted(required_training[stg_calc].keys(), reverse=True)
+            idx = ranks_sorted.index(rnk_calc)
+
+            # 一つ上が存在するならそれを使う
+            if idx > 0:
+                display_rank = ranks_sorted[idx - 1]
+                display_steps.append((stg_calc, display_rank))
+            else:
+                # 一つ上がない → 次の境地の最初の段位
+                display_steps.append((next_stage, next_stage_first_rank))
         else:
-            # 次境地はそのまま
-            display_steps.append((stg, rnk))
+            # 境地が変わる場合はそのまま
+            display_steps.append((stg_calc, rnk_calc))
 
     # 計算は target_steps のまま
     steps = []
@@ -152,7 +162,7 @@ if st.button("シミュレーション開始"):
     st.markdown("### 次の段位まで（アイテム未使用）")
     st.table(pd.DataFrame(rows1))
 
-    # 表3（タイトルだけ修正済み）
+    # 表3（タイトルだけ正しくずらした）
     rows3 = []
     for label, buff in BUFF_OPTIONS.items():
         steps = simulate_until_next_stage(stage, rank, current, buff)
