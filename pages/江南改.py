@@ -74,15 +74,13 @@ def simulate_until_next_stage(stage, rank, current, buff):
     ranks = sorted(required_training[stage].keys(), reverse=True)
     start_index = ranks.index(rank)
 
+    # ★ 計算用 target_steps（元ソースそのまま）
     target_steps = []
 
-    # ★ 修正：学士1のときは現在段位をタイトルに含めない（あなたの仕様）
-    if not (stage == "学士" and rank == 1):
-        for r in ranks[start_index:]:
-            if required_training[stage][r] > 0:
-                target_steps.append((stage, r))
+    for r in ranks[start_index+1:]:
+        if required_training[stage][r] > 0:
+            target_steps.append((stage, r))
 
-    # 次の境地の最初の段位（元ソース通り）
     next_stage_ranks = sorted(
         [r for r, v in required_training[next_stage].items() if v > 0],
         reverse=True
@@ -90,21 +88,32 @@ def simulate_until_next_stage(stage, rank, current, buff):
     next_stage_first_rank = next_stage_ranks[0]
     target_steps.append((next_stage, next_stage_first_rank))
 
+    # ★ 表示用タイトル（自分の段位は出さない）
+    display_steps = []
+    for stg, rnk in target_steps:
+        if stg == stage:
+            # 自分より下の段位だけ出す（元ソースの target_steps が保証）
+            display_steps.append((stg, rnk))
+        else:
+            # 次境地はそのまま
+            display_steps.append((stg, rnk))
+
+    # 計算は target_steps のまま
     steps = []
     current_time = now
     current_value = current
 
-    for stg, rnk in target_steps:
-        base_speed = training_speeds[stg][rnk]
-        required = required_training[stg][rnk]
+    for (stg_calc, rnk_calc), (stg_disp, rnk_disp) in zip(target_steps, display_steps):
+        base_speed = training_speeds[stg_calc][rnk_calc]
+        required = required_training[stg_calc][rnk_calc]
         remaining = max(0, required - current_value)
 
         t, _, _ = simulate_time(remaining, base_speed, buff)
         reach_time = current_time + timedelta(seconds=t)
 
         steps.append({
-            "stage": stg,
-            "rank": rnk,
+            "stage": stg_disp,
+            "rank": rnk_disp,
             "reach_time": reach_time.strftime("%Y-%m-%d %H:%M")
         })
 
