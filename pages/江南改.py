@@ -88,21 +88,20 @@ def simulate_until_next_stage(stage, rank, current, buff):
     next_stage_first_rank = next_stage_ranks[0]
     target_steps.append((next_stage, next_stage_first_rank))
 
-    # ★ 表示用タイトル（計算段位の一つ上を表示）
+    # ★ 表示用タイトル（計算段位を 1 つ上にずらす）
     display_steps = []
     for stg_calc, rnk_calc in target_steps:
 
         if stg_calc == stage:
-            # 同じ境地 → rank を一つ上にずらす
+            # 同じ境地 → rank を 1 つ上にずらす
             ranks_sorted = sorted(required_training[stg_calc].keys(), reverse=True)
             idx = ranks_sorted.index(rnk_calc)
 
-            # 一つ上が存在するならそれを使う
             if idx > 0:
                 display_rank = ranks_sorted[idx - 1]
                 display_steps.append((stg_calc, display_rank))
             else:
-                # 一つ上がない → 次の境地の最初の段位
+                # 1 つ上がない → 次の境地の最初の段位
                 display_steps.append((next_stage, next_stage_first_rank))
         else:
             # 境地が変わる場合はそのまま
