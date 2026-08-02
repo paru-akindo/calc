@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-st.title("江南 修練シミュレーター（次の境地まで対応版）")
+st.title("江南 修練シミュレーター")
 
 # ── 昇段に必要な修練値 ──
 required_training = {
