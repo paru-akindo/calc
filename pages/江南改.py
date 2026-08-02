@@ -76,10 +76,11 @@ def simulate_until_next_stage(stage, rank, current, buff):
 
     target_steps = []
 
-    # ★修正：現在段位もタイトルに含める
-    for r in ranks[start_index:]:
-        if required_training[stage][r] > 0:
-            target_steps.append((stage, r))
+    # ★ 修正：学士1のときは現在段位をタイトルに含めない
+    if not (stage == "学士" and rank == 1):
+        for r in ranks[start_index:]:
+            if required_training[stage][r] > 0:
+                target_steps.append((stage, r))
 
     # 次の境地の最初の段位（元ソース通り）
     next_stage_ranks = sorted(
