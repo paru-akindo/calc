@@ -42,7 +42,7 @@ add_buff_percent_input = st.number_input(
     "追加するバフ（%）",
     min_value=0.0,
     value=0.0,
-    step=0.5,
+    step=0.1,
     format="%.1f"
 )
 add_buff_percent = add_buff_percent_input / 100.0
