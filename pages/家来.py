@@ -56,26 +56,26 @@ if st.button("計算する"):
     # ★ 基礎値を自動計算
     current_base = current_quality * k
 
-    # 現在のバフ推定
-    B = current_sales / current_base - 1
+    # ★ 現在のバフ（内部は実数）
+    B_now = current_sales / current_base - 1
 
-    # 新しい基礎値
+    # ★ 新しい基礎値
     new_quality = current_quality + add_quality
     new_base = new_quality * k
 
-    # 新しいバフ
-    new_buff = B * (1 + add_buff_percent)
+    # ★ 新しいバフ（内部は実数・丸めない）
+    B_new = B_now + add_buff_percent
 
-    # 新しい売上
-    new_sales = new_base * (1 + new_buff)
+    # ★ 売上計算（内部は実数）
+    new_sales = new_base * (1 + B_new)
 
     # ★ 表示用フォーマット（億・有効数字4桁）
     def to_oku(x):
         return f"{x/100_000_000:,.4g}"
 
-    # ★ バフは整数丸め
-    current_buff_percent = round(B * 100)
-    new_buff_percent = round(new_buff * 100)
+    # ★ バフは表示時だけ整数丸め
+    current_buff_percent = round(B_now * 100)
+    new_buff_percent = round(B_new * 100)
 
     # ★ 表データ
     table = {
