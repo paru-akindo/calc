@@ -24,7 +24,7 @@ def load_coefficients():
 
 coeff_map = load_coefficients()
 
-st.title("家来予想売上計算（基礎値自動計算＋表表示）")
+st.title("家来予想売上計算")
 
 # 初期値セット
 level = st.number_input("家来等級", min_value=1, value=700)
