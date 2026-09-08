@@ -44,7 +44,7 @@ bones = [
 ]
 common_buff = 0.16
 
-st.title("家来予想売上計算（スプシ＋骨おすすめ調査）")
+st.title("家来予想売上計算")
 
 # 入力欄
 col1, col2 = st.columns(2)
