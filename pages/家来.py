@@ -24,14 +24,24 @@ def load_coefficients():
 
 coeff_map = load_coefficients()
 
-st.title("家来予想計算")
+st.title("家来予想売上計算（Streamlit版）")
 
-level = st.number_input("家来等級", min_value=1, value=832)
-current_sales = st.number_input("現在の売上", min_value=0.0, value=70270000000.0)
-current_base = st.number_input("現在の基礎", min_value=0.0, value=1124000000.0)
-current_quality = st.number_input("現在の資質", min_value=0.0, value=12400.0)
-add_quality = st.number_input("追加する資質", min_value=0.0, value=120.0)
-add_buff_percent = st.number_input("追加するバフ％（例：5% → 0.05）", min_value=0.0, value=0.05)
+# 初期値セット
+level = st.number_input("家来等級", min_value=1, value=700)
+
+# 売上は「億」で入力（内部では ×1億 に変換）
+sales_oku = st.number_input("現在の売上（億）", min_value=0.0, value=300.0)
+current_sales = sales_oku * 100_000_000
+
+base_oku = st.number_input("現在の基礎値（億）", min_value=0.0, value=7.0)
+current_base = base_oku * 100_000_000
+
+current_quality = st.number_input("現在の資質", min_value=0.0, value=50000.0)
+add_quality = st.number_input("追加する資質", min_value=0.0, value=0.0)
+
+# ★ バフは % で入力 → 内部で 100 で割る
+add_buff_percent_input = st.number_input("追加するバフ（%）", min_value=0.0, value=0.0)
+add_buff_percent = add_buff_percent_input / 100.0
 
 if st.button("計算する"):
     # 現在のバフ推定
