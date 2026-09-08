@@ -24,7 +24,7 @@ def load_coefficients():
 
 coeff_map = load_coefficients()
 
-st.title("家来予想売上計算（基礎値自動計算版）")
+st.title("家来予想売上計算（基礎値自動計算＋表表示）")
 
 # 初期値セット
 level = st.number_input("家来等級", min_value=1, value=700)
@@ -69,8 +69,28 @@ if st.button("計算する"):
     # 新しい売上
     new_sales = new_base * (1 + new_buff)
 
-    st.subheader("計算結果")
-    st.write(f"現在の基礎値：{current_base:,.0f}")
-    st.write(f"新しい基礎値：{new_base:,.0f}")
-    st.write(f"新しいバフ：{new_buff * 100:.2f}%")
-    st.write(f"予想売上：{new_sales:,.0f}")
+    # ★ 表示用フォーマット（億・有効数字4桁）
+    def to_oku(x):
+        return f"{x/100_000_000:,.4g}"
+
+    # ★ バフは整数丸め
+    current_buff_percent = round(B * 100)
+    new_buff_percent = round(new_buff * 100)
+
+    # ★ 表データ
+    table = {
+        "項目": ["売上（億）", "基礎値（億）", "バフ（%）"],
+        "現在": [
+            to_oku(current_sales),
+            to_oku(current_base),
+            f"{current_buff_percent}"
+        ],
+        "予想": [
+            to_oku(new_sales),
+            to_oku(new_base),
+            f"{new_buff_percent}"
+        ]
+    }
+
+    st.subheader("結果比較表")
+    st.table(table)
