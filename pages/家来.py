@@ -36,11 +36,18 @@ current_sales = sales_oku * 100_000_000
 base_oku = st.number_input("現在の基礎値（億）", min_value=0.0, value=7.0)
 current_base = base_oku * 100_000_000
 
-current_quality = st.number_input("現在の資質", min_value=0.0, value=50000.0)
-add_quality = st.number_input("追加する資質", min_value=0.0, value=0.0)
+# 資質は整数
+current_quality = st.number_input("現在の資質", min_value=0, value=50000, step=1)
+add_quality = st.number_input("追加する資質", min_value=0, value=0, step=1)
 
-# ★ バフは % で入力 → 内部で 100 で割る
-add_buff_percent_input = st.number_input("追加するバフ（%）", min_value=0.0, value=0.0)
+# ★ バフは 0.5 刻み（%入力）
+add_buff_percent_input = st.number_input(
+    "追加するバフ（%）",
+    min_value=0.0,
+    value=0.0,
+    step=0.5,     # ← ここが重要（0.5刻み）
+    format="%.1f" # ← 小数点1桁だけ
+)
 add_buff_percent = add_buff_percent_input / 100.0
 
 if st.button("計算する"):
